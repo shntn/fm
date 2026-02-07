@@ -1,6 +1,6 @@
 use std::{
     fs,
-    io,
+    io::{self, Stdout},
     path::{Path, PathBuf},
 };
 
@@ -12,12 +12,40 @@ use crossterm::{
 
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Line},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Terminal,
 };
+
+//////////////////////////////////////////////////////
+// TerminalGuard (Stdout を保持し、ドロップ時に復旧)
+//////////////////////////////////////////////////////
+struct TerminalGuard {
+    stdout: Stdout,
+}
+
+impl TerminalGuard {
+    fn init() -> Result<Self, Box<dyn std::error::Error>> {
+        let mut stdout = io::stdout();
+        enable_raw_mode()?;
+        execute!(stdout, EnterAlternateScreen)?;
+        Ok(TerminalGuard { stdout })
+    }
+
+    fn terminal(&mut self) -> io::Result<Terminal<CrosstermBackend<&mut Stdout>>> {
+        let backend = CrosstermBackend::new(&mut self.stdout);
+        Terminal::new(backend)
+    }
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let _ = execute!(self.stdout, LeaveAlternateScreen);
+    }
+}
 
 //////////////////////////////////////////////////////
 // FileEntry（純粋なデータ保持構造）
@@ -32,9 +60,8 @@ struct FileEntry {
 // FileInfoView（選択中ファイルを2行表示）
 //////////////////////////////////////////////////////
 struct FileInfoView;
-
 impl FileInfoView {
-    fn render(f: &mut ratatui::Frame, area: ratatui::layout::Rect, entry: Option<&FileEntry>) {
+    fn render(f: &mut ratatui::Frame, area: Rect, entry: Option<&FileEntry>) {
         let (name, meta) = match entry {
             Some(e) => {
                 let name = if e.is_dir {
@@ -56,10 +83,12 @@ impl FileInfoView {
         };
 
         let text = vec![
-            Line::from(Span::styled(
-                name,
-                Style::default().add_modifier(Modifier::BOLD),
-            )),
+            Line::from(
+                Span::styled(
+                    name,
+                    Style::default().add_modifier(Modifier::BOLD)
+                )
+            ),
             Line::from(Span::raw(meta)),
         ];
 
@@ -100,7 +129,7 @@ impl StatusLineView {
 
     fn render(
         f: &mut ratatui::Frame,
-        area: ratatui::layout::Rect,
+        area: Rect,
         ctl: &DirectoryController,
     ) {
         let short = Self::short_path(ctl.current_path(), 3);
@@ -161,16 +190,14 @@ impl PathManager {
 struct FileSystemService;
 
 impl FileSystemService {
-    fn read_dir(path: &Path) -> Vec<FileEntry> {
+    fn read_dir(path: &Path) -> io::Result<Vec<FileEntry>> {
         let mut result = Vec::new();
-        if let Ok(read) = fs::read_dir(path) {
-            for e in read.flatten() {
-                let name = e.file_name().to_string_lossy().to_string();
-                let is_dir = e.path().is_dir();
-                result.push(FileEntry { name, is_dir });
-            }
+        for e in fs::read_dir(path)?.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            let is_dir = e.path().is_dir();
+            result.push(FileEntry { name, is_dir });
         }
-        result
+        Ok(result)
     }
 }
 
@@ -213,39 +240,38 @@ impl DirStateManager {
 }
 
 //////////////////////////////////////////////////////
-// DirectoryController（Path + FS + DirManager を束ねる頭脳）
+// DirectoryController（Path + FS + DirManager を束ねる）
 //////////////////////////////////////////////////////
 struct DirectoryController {
     path_mgr: PathManager,
     dir_mgr: DirStateManager,
-    fs: FileSystemService,
 }
-
 impl DirectoryController {
-    fn new(path: PathBuf) -> Self {
+    fn new(path: PathBuf) -> io::Result<Self> {
         let mut s = Self {
             path_mgr: PathManager::new(path),
-            dir_mgr: DirStateManager::new(),
-            fs: FileSystemService,
+            dir_mgr: DirStateManager::new()
         };
-        s.reload();
-        s
+        s.reload()?;
+        Ok(s)
     }
 
-    fn reload(&mut self) {
-        let entries = FileSystemService::read_dir(self.path_mgr.current());
+    fn reload(&mut self) -> io::Result<()> {
+        let entries = FileSystemService::read_dir(self.path_mgr.current())?;
         self.dir_mgr.set_entries(entries);
+        Ok(())
     }
 
-    fn enter_dir(&mut self, name: &str) {
+    fn enter_dir(&mut self, name: &str) -> io::Result<()> {
         self.path_mgr.enter_child(name);
-        self.reload();
+        self.reload()
     }
 
-    fn go_parent(&mut self) {
+    fn go_parent(&mut self) -> io::Result<()> {
         if self.path_mgr.go_parent() {
-            self.reload();
+            self.reload()?;
         }
+        Ok(())
     }
 
     fn current_path(&self) -> &Path {
@@ -278,25 +304,24 @@ impl UIState {
         Self { cursor: 0, scroll: 0 }
     }
 
-    fn page_size(height: u16) -> usize {
-        height.saturating_sub(3) as usize // FileInfo + StatusLine 分引く
-    }
-
     fn adjust(&mut self, page: usize, total: usize) {
+        if total == 0 {
+            self.cursor = 0;
+            self.scroll = 0;
+            return;
+        }
+        self.cursor = self.cursor.min(total.saturating_sub(1));
+
+        let bottom = self.scroll + page;
         if self.cursor < self.scroll {
             self.scroll = self.cursor;
-        }
-        let bottom = self.scroll + page - 1;
-        if self.cursor > bottom {
-            self.scroll = self.cursor - (page - 1);
-        }
-        if self.cursor >= total && total > 0 {
-            self.cursor = total - 1;
+        } else if page > 0 && self.cursor >= bottom {
+            self.scroll = self.cursor - page + 1;
         }
     }
 
-    fn relative(&self) -> Option<usize> {
-        self.cursor.checked_sub(self.scroll)
+    fn relative(&self) -> usize {
+        self.cursor.saturating_sub(self.scroll)
     }
 }
 
@@ -307,7 +332,7 @@ struct EntryFormatter;
 impl EntryFormatter {
     fn format_entry(e: &FileEntry) -> ListItem<'static> {
         let formatted_file_info = if e.is_dir { format!("{}/", e.name) } else { e.name.clone() };
-        ListItem::new(Span::raw(formatted_file_info))
+        ListItem::new(formatted_file_info)
     }
 }
 
@@ -320,20 +345,20 @@ impl Renderer {
     fn render(
         f: &mut ratatui::Frame,
         ctl: &DirectoryController,
-        ui: &UIState,
-        page: usize,
-    ) {
-        let size = f.size();
+        ui: &UIState
+    ) -> usize {
 
         // 縦方向に 3 分割
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3),     // FileInfoView
-                Constraint::Min(5),        // FileListView
-                Constraint::Length(1),     // StatusLine
-            ])
-            .split(size);
+                Constraint::Length(3),      // FileInfoView
+                Constraint::Min(1),         // FileListView
+                Constraint::Length(3),      // StatusLine
+        ]).split(f.size());
+
+        let list_area = chunks[1];
+        let page = list_area.height.saturating_sub(2) as usize;
 
         // ---- FileInfoView ----
         let current = ctl.entry_at(ui.cursor);
@@ -341,11 +366,15 @@ impl Renderer {
 
         // ---- FileListView ----
         let entries = ctl.range(ui.scroll, page);
-        let items: Vec<ListItem> = entries.iter().map(EntryFormatter::format_entry).collect();
-
+        let items: Vec<ListItem> = entries
+            .iter()
+            .map(EntryFormatter::format_entry)
+            .collect();
         let mut state = ListState::default();
-        if let Some(rel) = ui.relative() {
-            state.select(Some(rel.min(items.len().saturating_sub(1))));
+
+        if !items.is_empty() {
+            let rel = ui.relative();
+            state.select(Some(rel.min(items.len() - 1)));
         }
 
         let list = List::new(items)
@@ -356,17 +385,23 @@ impl Renderer {
                     .fg(Color::Black)
                     .add_modifier(Modifier::BOLD),
             )
-            .block(Block::default().title("Files").borders(Borders::ALL));
+            .block(
+                Block::default()
+                    .title(" Files ")
+                    .borders(Borders::ALL)
+            );
 
-        f.render_stateful_widget(list, chunks[1], &mut state);
+        f.render_stateful_widget(list, list_area, &mut state);
 
         // ---- StatusLine ----
         StatusLineView::render(f, chunks[2], ctl);
+
+        page
     }
 }
 
 //////////////////////////////////////////////////////
-// 入力 → コマンド変換
+// InputHandler (入力 → コマンド変換)
 //////////////////////////////////////////////////////
 enum Command {
     Up,
@@ -381,10 +416,10 @@ struct InputHandler;
 impl InputHandler {
     fn map(ev: KeyEvent) -> Command {
         match ev.code {
-            KeyCode::Up => Command::Up,
-            KeyCode::Down => Command::Down,
-            KeyCode::Enter => Command::Enter,
-            KeyCode::Backspace => Command::Back,
+            KeyCode::Up | KeyCode::Char('k') => Command::Up,
+            KeyCode::Down | KeyCode::Char('j') => Command::Down,
+            KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => Command::Enter,
+            KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h') => Command::Back,
             KeyCode::Char('q') => Command::Quit,
             _ => Command::None,
         }
@@ -400,7 +435,7 @@ impl CommandExecutor {
         cmd: Command,
         ctl: &mut DirectoryController,
         ui: &mut UIState,
-        page: usize,
+        page: usize
     ) -> bool {
         match cmd {
             Command::Up => {
@@ -417,19 +452,21 @@ impl CommandExecutor {
                 if let Some(e) = ctl.entry_at(ui.cursor) {
                     if e.is_dir {
                         let name = e.name.clone();
-                        ctl.enter_dir(&name);
-                        ui.cursor = 0;
-                        ui.scroll = 0;
+                        if ctl.enter_dir(&name).is_ok() {
+                            ui.cursor = 0;
+                            ui.scroll = 0;
+                        }
                     }
                 }
             }
             Command::Back => {
-                ctl.go_parent();
-                ui.cursor = 0;
-                ui.scroll = 0;
+                if ctl.go_parent().is_ok() {
+                    ui.cursor = 0;
+                    ui.scroll = 0;
+                }
             }
             Command::Quit => return false,
-            Command::None => {}
+            _ => {}
         }
 
         ui.adjust(page, ctl.len());
@@ -438,35 +475,26 @@ impl CommandExecutor {
 }
 
 //////////////////////////////////////////////////////
-// MAIN
+// Main
 //////////////////////////////////////////////////////
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    let mut guard = TerminalGuard::init()?;
+    let mut terminal = guard.terminal()?;
 
-    let mut ctl = DirectoryController::new(PathBuf::from("."));
+    let mut ctl = DirectoryController::new(PathBuf::from("."))?;
     let mut ui = UIState::new();
+    let mut last_page = 1;
 
     loop {
         terminal.draw(|f| {
-            let size = f.size();
-            let page = UIState::page_size(size.height).max(1);
-            Renderer::render(f, &ctl, &ui, page);
+            last_page = Renderer::render(f, &ctl, &ui);
         })?;
 
         if let Event::Key(key) = event::read()? {
-            let cmd = InputHandler::map(key);
-            let page = UIState::page_size(terminal.size()?.height).max(1);
-            if !CommandExecutor::exec(cmd, &mut ctl, &mut ui, page) {
+            if !CommandExecutor::exec(InputHandler::map(key), &mut ctl, &mut ui, last_page) {
                 break;
             }
         }
     }
-
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     Ok(())
 }
