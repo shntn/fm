@@ -355,10 +355,13 @@ impl Renderer {
                 Constraint::Length(3),      // FileInfoView
                 Constraint::Min(1),         // FileListView
                 Constraint::Length(3),      // StatusLine
-        ]).split(f.size());
+            ]).split(f.size());
 
         let list_area = chunks[1];
-        let page = list_area.height.saturating_sub(2) as usize;
+
+        let list_block = Block::default().title(" Files ").borders(Borders::ALL);
+        let list_inner = list_block.inner(list_area);
+        let page = list_inner.height as usize;
 
         // ---- FileInfoView ----
         let current = ctl.entry_at(ui.cursor);
@@ -384,14 +387,12 @@ impl Renderer {
                     .bg(Color::White)
                     .fg(Color::Black)
                     .add_modifier(Modifier::BOLD),
-            )
-            .block(
-                Block::default()
-                    .title(" Files ")
-                    .borders(Borders::ALL)
             );
 
-        f.render_stateful_widget(list, list_area, &mut state);
+        // block は outer に描画
+        f.render_widget(list_block, list_area);
+        // list は inner に描画
+        f.render_stateful_widget(list, list_inner, &mut state);
 
         // ---- StatusLine ----
         StatusLineView::render(f, chunks[2], ctl);
