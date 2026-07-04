@@ -1,10 +1,17 @@
 local layout = require("layout")
 local template = require("template")
 
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 -- 状態
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+
 local dir = fs.cwd()
 local files = {}
 local cursor = 1
+
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+-- 画面描画
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 
 local COLUMNS = {
     m = { field = "files[].mark" },
@@ -24,22 +31,6 @@ local TMPL = table.concat({
     "@" .. tag("m", 2) .. " " .. tag("n", 40) .. "  " .. tag("p", 9) .. "  " .. tag("s", 8) .. "  " .. tag("d", 19),
     " j/down:↓  k/up:↑  enter:開く  q:終了",
 }, "\n")
-
--- ファイル一覧を読み込む
-local function load_dir(path)
-    local list, err = fs.list(path)
-    if err then
-        return nil, err
-    end
-    -- ディレクトリを先に、その中でアルファベット順にソート
-    table.sort(list, function(a, b)
-        if a.is_dir ~= b.is_dir then return a.is_dir end
-        return a.name < b.name
-    end)
-    -- 先頭に .. を追加
-    table.insert(list, 1, { name = "..", is_dir = true, size = 0, modified = "", perm = "rwxr-xr-x" })
-    return list
-end
 
 -- ファイル一覧をtemplate.render用の変数テーブルに変換する
 local function build_vars(list_h)
@@ -75,16 +66,24 @@ local function draw()
     render_lines(lines, vars)
 end
 
--- 初期化
-function on_init()
-    local list, err = load_dir(dir)
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+-- ディレクトリナビゲーション
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+
+-- ファイル一覧を読み込む
+local function load_dir(path)
+    local list, err = fs.list(path)
     if err then
-        screen.clear()
-        screen.write(0, 0, "error: " .. err)
-        return
+        return nil, err
     end
-    files = list
-    draw()
+    -- ディレクトリを先に、その中でアルファベット順にソート
+    table.sort(list, function(a, b)
+        if a.is_dir ~= b.is_dir then return a.is_dir end
+        return a.name < b.name
+    end)
+    -- 先頭に .. を追加
+    table.insert(list, 1, { name = "..", is_dir = true, size = 0, modified = "", perm = "rwxr-xr-x" })
+    return list
 end
 
 -- カーソルを1行下に移動する
@@ -147,6 +146,22 @@ local function open_selected()
     else
         enter_directory(dir .. "/" .. f.name, nil)
     end
+end
+
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+-- コールバック
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+
+-- 初期化
+function on_init()
+    local list, err = load_dir(dir)
+    if err then
+        screen.clear()
+        screen.write(0, 0, "error: " .. err)
+        return
+    end
+    files = list
+    draw()
 end
 
 -- キー処理
