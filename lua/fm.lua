@@ -19,6 +19,12 @@ local function tag(key, width)
     return "#" .. key .. string.rep("#", width - #key - 1)
 end
 
+local TMPL = table.concat({
+    " fm  {dir}",
+    "@" .. tag("m", 2) .. " " .. tag("n", 40) .. "  " .. tag("p", 9) .. "  " .. tag("s", 8) .. "  " .. tag("d", 19),
+    " j/down:↓  k/up:↑  enter:開く  q:終了",
+}, "\n")
+
 -- ファイル一覧を読み込む
 local function load_dir(path)
     local list, err = fs.list(path)
@@ -35,17 +41,8 @@ local function load_dir(path)
     return list
 end
 
--- 画面描画
-local function draw()
-    local width, height = screen.get_size()
-    local list_h = height - 2  -- ヘッダー1行 + フッター1行
-
-    local tmpl = table.concat({
-        " fm  {dir}",
-        "@" .. tag("m", 2) .. " " .. tag("n", 40) .. "  " .. tag("p", 9) .. "  " .. tag("s", 8) .. "  " .. tag("d", 19),
-        " j/down:↓  k/up:↑  enter:開く  q:終了",
-    }, "\n")
-
+-- ファイル一覧をtemplate.render用の変数テーブルに変換する
+local function build_vars(list_h)
     local vars = { dir = dir }
     for r = 0, list_h - 1 do
         local f = files[r + 1]
@@ -56,12 +53,26 @@ local function draw()
         vars[prefix .. "size"] = f and tostring(f.size) or ""
         vars[prefix .. "modified"] = f and f.modified or ""
     end
+    return vars
+end
 
-    screen.clear()
-    local lines = layout.expand(tmpl, COLUMNS, width, height)
+-- 行テンプレートの配列を、変数を展開して画面に書き込む
+local function render_lines(lines, vars)
     for i, line in ipairs(lines) do
         screen.write(0, i - 1, template.render(line, vars))
     end
+end
+
+-- 画面描画
+local function draw()
+    local width, height = screen.get_size()
+    local list_h = height - 2  -- ヘッダー1行 + フッター1行
+
+    local vars = build_vars(list_h)
+    local lines = layout.expand(TMPL, COLUMNS, width, height)
+
+    screen.clear()
+    render_lines(lines, vars)
 end
 
 -- 初期化
