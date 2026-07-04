@@ -192,7 +192,7 @@ columns定義:
 | `field` | string | 必須 | データのパス。`[]`を含む場合は配列グループ |
 | `flex` | boolean | 任意 | trueのとき画面幅に応じて伸縮 |
 | `align` | string | 任意 | `"left"`（デフォルト）または `"right"` |
-| `dir` | string | 配列グループは必須 | `"vertical"`または`"horizontal"`、省略時は`"horizontal"` |
+| `dir` | string | 任意 | `"vertical"`または`"horizontal"`。配列グループでのみ意味を持ち、省略時は`"horizontal"` |
 
 列の対応付け:
 
