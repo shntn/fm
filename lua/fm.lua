@@ -21,7 +21,7 @@ end
 
 -- 画面描画
 local function draw()
-    local w, h = screen.get_size()
+    local _, h = screen.get_size()
     local list_h = h - 2  -- ヘッダー1行 + フッター1行
 
     screen.clear()
