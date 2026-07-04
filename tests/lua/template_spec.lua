@@ -32,6 +32,16 @@ describe("template.render", function()
         assert.equals("abcdefgh", result)
     end)
 
+    it("角括弧とドットを含むキー（layout.expandの出力形式）を展開できる", function()
+        local result = template.render("{files[0].name:10}", { ["files[0].name"] = "README.md" })
+        assert.equals("README.md ", result)
+    end)
+
+    it("角括弧とドットを含むキーでrightを指定した場合は右詰めで展開できる", function()
+        local result = template.render("{files[0].size:6:right}", { ["files[0].size"] = "1234" })
+        assert.equals("  1234", result)
+    end)
+
     it("複数のプレースホルダをまとめて展開する", function()
         local result = template.render("{name:20}  {size:8:right}  {date}", {
             name = "README.md",
