@@ -1,7 +1,23 @@
+local layout = require("layout")
+local template = require("template")
+
 -- 状態
 local dir = fs.cwd()
 local files = {}
 local cursor = 1
+
+local COLUMNS = {
+    m = { field = "files[].mark" },
+    n = { field = "files[].name" },
+    p = { field = "files[].perm" },
+    s = { field = "files[].size", align = "right" },
+    d = { field = "files[].modified" },
+}
+
+-- 幅width、タグ名keyの #key###...# 形式のタグ文字列を組み立てる
+local function tag(key, width)
+    return "#" .. key .. string.rep("#", width - #key - 1)
+end
 
 -- ファイル一覧を読み込む
 local function load_dir(path)
@@ -21,32 +37,31 @@ end
 
 -- 画面描画
 local function draw()
-    local _, h = screen.get_size()
-    local list_h = h - 2  -- ヘッダー1行 + フッター1行
+    local width, height = screen.get_size()
+    local list_h = height - 2  -- ヘッダー1行 + フッター1行
 
-    screen.clear()
+    local tmpl = table.concat({
+        " fm  {dir}",
+        "@" .. tag("m", 2) .. " " .. tag("n", 40) .. "  " .. tag("p", 9) .. "  " .. tag("s", 8) .. "  " .. tag("d", 19),
+        " j/down:↓  k/up:↑  enter:開く  q:終了",
+    }, "\n")
 
-    -- ヘッダー
-    local header = "fm  " .. dir
-    screen.write(0, 0, header)
-
-    -- ファイル一覧
-    for i, f in ipairs(files) do
-        if i > list_h then break end
-        local name = f.name
-        if f.is_dir then name = name .. "/" end
-        local line = string.format("%-40s %s %8d  %s",
-            name, f.perm, f.size, f.modified)
-        if i == cursor then
-            -- カーソル行は > でマーク
-            screen.write(0, i, "> " .. line)
-        else
-            screen.write(0, i, "  " .. line)
-        end
+    local vars = { dir = dir }
+    for r = 0, list_h - 1 do
+        local f = files[r + 1]
+        local prefix = "files[" .. r .. "]."
+        vars[prefix .. "mark"] = (f and r + 1 == cursor) and ">" or " "
+        vars[prefix .. "name"] = f and (f.is_dir and (f.name .. "/") or f.name) or ""
+        vars[prefix .. "perm"] = f and f.perm or ""
+        vars[prefix .. "size"] = f and tostring(f.size) or ""
+        vars[prefix .. "modified"] = f and f.modified or ""
     end
 
-    -- フッター
-    screen.write(0, h - 1, "j/down:↓  k/up:↑  enter:開く  q:終了")
+    screen.clear()
+    local lines = layout.expand(tmpl, COLUMNS, width, height)
+    for i, line in ipairs(lines) do
+        screen.write(0, i - 1, template.render(line, vars))
+    end
 end
 
 -- 初期化

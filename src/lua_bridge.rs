@@ -25,6 +25,12 @@ impl LuaBridge {
         let code = std::fs::read_to_string(path).map_err(|e| {
             LuaError::RuntimeError(format!("{}の読み込み失敗: {}", path, e))
         })?;
+
+        let dir = Path::new(path).parent().and_then(|p| p.to_str()).unwrap_or(".");
+        let package: LuaTable = self.lua.globals().get("package")?;
+        let existing: String = package.get("path")?;
+        package.set("path", format!("{}/?.lua;{}", dir, existing))?;
+
         self.lua.load(&code).exec()
     }
 
