@@ -1,0 +1,5 @@
+describe("サンプルテスト", function()
+    it("trueはtrueである", function()
+        assert.is_true(true)
+    end)
+end)
