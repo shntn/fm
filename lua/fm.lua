@@ -99,9 +99,11 @@ function on_key(key)
         if f and f.is_dir then
             -- ディレクトリに移動
             local newdir
+            local child_name
             if f.name == ".." then
                 -- 親ディレクトリへ
                 newdir = dir:match("^(.*)/[^/]+$") or "/"
+                child_name = dir:match("([^/]+)$")
             else
                 newdir = dir .. "/" .. f.name
             end
@@ -110,6 +112,15 @@ function on_key(key)
                 dir = newdir
                 files = list
                 cursor = 1
+                -- 親ディレクトリへ戻ったときは、元いた子ディレクトリの位置にカーソルを合わせる
+                if child_name then
+                    for i, item in ipairs(files) do
+                        if item.name == child_name then
+                            cursor = i
+                            break
+                        end
+                    end
+                end
                 draw()
             end
         end

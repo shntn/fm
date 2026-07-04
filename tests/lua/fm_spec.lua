@@ -91,6 +91,14 @@ describe("fm", function()
         assert.equals("fm  /root/sub", screen.writes[0])
     end)
 
+    it("親ディレクトリに戻ったとき、元いた子ディレクトリの位置にカーソルが合う", function()
+        on_init()
+        on_key("j") -- カーソルをディレクトリ"sub"に合わせる
+        on_key("enter") -- "sub"に入る
+        on_key("enter") -- ".."で親("/root")に戻る
+        assert.equals(">", screen.writes[2]:sub(1, 1))
+    end)
+
     it("fs.listがエラーを返す場合、エラーメッセージを描画する", function()
         _G.fs.cwd = function() return "/missing" end
         dofile("lua/fm.lua")
