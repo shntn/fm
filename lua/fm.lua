@@ -76,6 +76,68 @@ function on_init()
     draw()
 end
 
+-- カーソルを1行下に移動する
+local function move_cursor_down()
+    if cursor < #files then
+        cursor = cursor + 1
+    end
+    draw()
+end
+
+-- カーソルを1行上に移動する
+local function move_cursor_up()
+    if cursor > 1 then
+        cursor = cursor - 1
+    end
+    draw()
+end
+
+-- リストの中からnameと一致する要素のインデックスを探す
+local function find_index_by_name(list, name)
+    for i, item in ipairs(list) do
+        if item.name == name then
+            return i
+        end
+    end
+    return nil
+end
+
+-- pathの親ディレクトリのパスを返す
+local function parent_dir(path)
+    return path:match("^(.*)/[^/]+$") or "/"
+end
+
+-- pathの末尾の要素名を返す
+local function last_segment(path)
+    return path:match("([^/]+)$")
+end
+
+-- newdirに移動する。cursor_nameが指定されていれば、その名前の要素にカーソルを合わせる
+local function enter_directory(newdir, cursor_name)
+    local list, err = load_dir(newdir)
+    if err then
+        return
+    end
+    dir = newdir
+    files = list
+    cursor = (cursor_name and find_index_by_name(files, cursor_name)) or 1
+    draw()
+end
+
+-- カーソル位置の要素を開く
+local function open_selected()
+    local f = files[cursor]
+    if not f or not f.is_dir then
+        return
+    end
+    if f.name == ".." then
+        -- 親ディレクトリへ。戻った後は元いた子ディレクトリの位置にカーソルを合わせる
+        enter_directory(parent_dir(dir), last_segment(dir))
+    else
+        enter_directory(dir .. "/" .. f.name, nil)
+    end
+end
+
 -- キー処理
 function on_key(key)
     if key == "q" or key == "escape" then
@@ -83,47 +145,11 @@ function on_key(key)
     end
 
     if key == "j" or key == "down" then
-        if cursor < #files then
-            cursor = cursor + 1
-        end
-        draw()
-
+        move_cursor_down()
     elseif key == "k" or key == "up" then
-        if cursor > 1 then
-            cursor = cursor - 1
-        end
-        draw()
-
+        move_cursor_up()
     elseif key == "enter" then
-        local f = files[cursor]
-        if f and f.is_dir then
-            -- ディレクトリに移動
-            local newdir
-            local child_name
-            if f.name == ".." then
-                -- 親ディレクトリへ
-                newdir = dir:match("^(.*)/[^/]+$") or "/"
-                child_name = dir:match("([^/]+)$")
-            else
-                newdir = dir .. "/" .. f.name
-            end
-            local list, err = load_dir(newdir)
-            if not err then
-                dir = newdir
-                files = list
-                cursor = 1
-                -- 親ディレクトリへ戻ったときは、元いた子ディレクトリの位置にカーソルを合わせる
-                if child_name then
-                    for i, item in ipairs(files) do
-                        if item.name == child_name then
-                            cursor = i
-                            break
-                        end
-                    end
-                end
-                draw()
-            end
-        end
+        open_selected()
     end
 
     return true
