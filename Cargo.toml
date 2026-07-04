@@ -1,8 +1,12 @@
 [package]
 name = "fm"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+
+[[bin]]
+name = "fm"
+path = "src/main.rs"
 
 [dependencies]
-ratatui = "0.26"
-crossterm = "0.27"
+mlua = { version = "0.10", features = ["lua54", "vendored"] }
+crossterm = "0.28"
