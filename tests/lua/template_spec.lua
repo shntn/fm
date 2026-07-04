@@ -22,6 +22,11 @@ describe("template.render", function()
         assert.equals("    1234", result)
     end)
 
+    it("leftを指定した場合は左詰めで埋める", function()
+        local result = template.render("{name:10:left}", { name = "abc" })
+        assert.equals("abc       ", result)
+    end)
+
     it("値が幅を超える場合はそのまま展開する", function()
         local result = template.render("{name:5}", { name = "abcdefgh" })
         assert.equals("abcdefgh", result)
