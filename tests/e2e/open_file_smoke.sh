@@ -28,13 +28,31 @@ printf 'hello world\n' > "$WORKDIR/a_text.txt"
 printf '\x00\x01\x02\xff\x00\xfe\x00binarydata' > "$WORKDIR/b_binary.bin"
 
 # ディレクトリ一覧の並び順: [.., lua/, a_text.txt, b_binary.bin]
-# キー入力の間には、rawモード設定前の取りこぼしを避けるためsleepを挟む。
+#
+# run_fm: 引数(log以外)をキー入力のまとまり(chunk)として順に送り込み、
+# 疑似端末の画面をlogに記録する。各chunkの間、および最初のchunkを送る前には
+# 自動でsleepが挟まる。呼び出し側はsleepやprintfの書き方を意識しなくてよい。
+#
+# sleepが必要な理由:
+# - 最初: fmがenable_raw_mode()する前にキーが届くと、rawバイトが疑似端末の
+#   cookedモード処理で化ける(例: \r が \n になる)
+# - chunkの間: lessなど別プロセスの終了処理とfm本体の入力再開が競合し、
+#   キーを取りこぼすことがある
+STARTUP_DELAY=1.5
+CHUNK_DELAY=0.5
+
 run_fm() {
-    local keys="$1"
-    local log="$2"
+    local log="$1"
+    shift
     (
         cd "$WORKDIR"
-        eval "$keys" | timeout 8 script -qec "stty rows 24 cols 80; TERM=xterm '$BIN'" "$log" \
+        (
+            sleep "$STARTUP_DELAY"
+            for chunk in "$@"; do
+                printf '%b' "$chunk"
+                sleep "$CHUNK_DELAY"
+            done
+        ) | timeout 8 script -qec "stty rows 24 cols 80; TERM=xterm '$BIN'" "$log" \
             >/dev/null 2>&1
     )
 }
@@ -42,8 +60,7 @@ run_fm() {
 fail=0
 
 echo "==> テキストファイル(a_text.txt)をlessで開けるか確認"
-run_fm 'sleep 1.5; printf "jj"; sleep 0.5; printf "\r"; sleep 1; printf "q"; sleep 0.5; printf "q"' \
-    "$WORKDIR/text.log"
+run_fm "$WORKDIR/text.log" 'jj\rq' 'q'
 if grep -aq 'hello world' "$WORKDIR/text.log"; then
     echo "OK: lessでテキスト内容が表示された"
 else
@@ -52,8 +69,7 @@ else
 fi
 
 echo "==> バイナリファイル(b_binary.bin)をxxd経由でlessに表示できるか確認"
-run_fm 'sleep 1.5; printf "jjj"; sleep 0.5; printf "\r"; sleep 1; printf "q"; sleep 0.5; printf "q"' \
-    "$WORKDIR/binary.log"
+run_fm "$WORKDIR/binary.log" 'jjj\rq' 'q'
 if grep -aoE '[0-9a-f]{8}: ' "$WORKDIR/binary.log" | head -1 >/dev/null; then
     echo "OK: xxdのダンプがlessに表示された"
 else
