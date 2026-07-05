@@ -1,11 +1,16 @@
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
-use crossterm::terminal;
+use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
+use crossterm::execute;
+use std::io::stdout;
 
-/// rawモードのDropガード。
+/// rawモード・代替画面バッファのDropガード。
+/// 代替画面バッファを使うことで、終了時に元のターミナル画面へ復元され、
+/// 描画のたびにスクロールバックへ内容が積まれるのを防ぐ。
 pub struct RawModeGuard;
 
 impl RawModeGuard {
     pub fn new() -> Result<Self, std::io::Error> {
+        execute!(stdout(), EnterAlternateScreen)?;
         terminal::enable_raw_mode()?;
         Ok(RawModeGuard)
     }
@@ -14,6 +19,7 @@ impl RawModeGuard {
 impl Drop for RawModeGuard {
     fn drop(&mut self) {
         let _ = terminal::disable_raw_mode();
+        let _ = execute!(stdout(), LeaveAlternateScreen);
     }
 }
 
