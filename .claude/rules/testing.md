@@ -21,6 +21,7 @@ paths:
 - タスクを完了とマークする前に、テストスイート全体を実行してください
   - `cargo test`
   - `busted tests/lua/`
+  - `for f in tests/e2e/*.sh; do bash "$f" || exit 1; done`
 
 ## Lua
 
