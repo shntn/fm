@@ -14,6 +14,7 @@ fm - ターミナルのファイルマネージャ
 * src/ - Rust コード
 * lua/ - Lua スクリプト
 * tests/ - テストコード
+* docs/ - ドキュメント
 * target/ - ビルド時に生成されるファイル
 
 ## Commands
@@ -23,8 +24,9 @@ fm - ターミナルのファイルマネージャ
 * Test:
   - Rust: `cargo test`
   - Lua: `busted tests/lua/`
+  - E2E: `for f in tests/e2e/*.sh; do bash "$f" || exit 1; done`
 * Lint:
-  - Rust: `carog clippy`
+  - Rust: `cargo clippy`
   - Lua: `luacheck lua/` or `luacheck tests/lua/`
 
 ## Verification
@@ -34,8 +36,9 @@ fm - ターミナルのファイルマネージャ
 1. `cargo check` - タイプエラーを修正する 
 2. `cargo test` - 失敗したテストを修正する
 3. `busted tests/lua/` - 失敗したテストを修正する
-4. `cargo clippy` - Lintエラーを修正する
-5. `luacheck lua/` - Lintエラーを修正する
+4. `for f in tests/e2e/*.sh; do bash "$f" || exit 1; done` - 失敗したテストを修正する
+5. `cargo clippy` - Lintエラーを修正する
+6. `luacheck lua/` - Lintエラーを修正する
 
 ## Conventions
 
