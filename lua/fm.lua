@@ -170,12 +170,24 @@ end
 
 -- pathの親ディレクトリのパスを返す
 local function parent_dir(path)
-    return path:match("^(.*)/[^/]+$") or "/"
+    local base = path:match("^(.*)/[^/]+$")
+    if not base or base == "" then
+        return "/"
+    end
+    return base
 end
 
 -- pathの末尾の要素名を返す
 local function last_segment(path)
     return path:match("([^/]+)$")
+end
+
+-- dirとnameを結合したパスを返す。dirがルート"/"の場合に"//"にならないようにする
+local function join_path(base, name)
+    if base == "/" then
+        return "/" .. name
+    end
+    return base .. "/" .. name
 end
 
 -- newdirに移動する。cursor_nameが指定されていれば、その名前の要素にカーソルを合わせる
@@ -227,8 +239,8 @@ end
 
 -- ファイルを開く。テキストファイルはlessで、バイナリファイルはダンプをlessで表示する
 local function open_file(f)
-    local quoted = shell_quote(dir .. "/" .. f.name)
-    if f.size == 0 or is_text_file(dir .. "/" .. f.name) then
+    local quoted = shell_quote(join_path(dir, f.name))
+    if f.size == 0 or is_text_file(join_path(dir, f.name)) then
         fs.run("less " .. quoted)
     else
         fs.run("xxd " .. quoted .. " | less")
@@ -259,7 +271,7 @@ local function open_selected()
     elseif f.name == ".." then
         go_to_parent()
     else
-        enter_directory(dir .. "/" .. f.name, nil)
+        enter_directory(join_path(dir, f.name), nil)
     end
 end
 

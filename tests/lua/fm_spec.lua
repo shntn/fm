@@ -23,6 +23,10 @@ local function make_fs()
             }
         elseif path == "/root/sub" then
             return {}
+        elseif path == "/" then
+            return {
+                { name = "root", is_dir = true, size = 0, modified = "2025-01-01 00:00:00", perm = "rwxr-xr-x" },
+            }
         end
         return nil, "not found"
     end
@@ -103,6 +107,21 @@ describe("fm", function()
         on_key("enter") -- "sub"に入る
         on_key("enter") -- ".."で親("/root")に戻る
         assert.equals(">", screen.writes[2]:sub(1, 1))
+    end)
+
+    it("ルート直下のディレクトリへ移動してもパスが二重スラッシュにならない", function()
+        _G.fs.cwd = function() return "/" end
+        dofile("lua/fm.lua")
+        on_init()
+        on_key("j") -- カーソルを"root"に合わせる
+        on_key("enter")
+        assert.equals("fm  /root", screen.writes[0])
+    end)
+
+    it("トップレベルのディレクトリからbackspaceでルート'/'に移動できる", function()
+        on_init()
+        on_key("backspace") -- "/root" -> "/"
+        assert.equals("fm  /", screen.writes[0])
     end)
 
     it("backspaceキーで親ディレクトリに移動する", function()
