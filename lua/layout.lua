@@ -151,9 +151,21 @@ local function render_line(segments, columns, tag_stats, width, flex_tag_count, 
                 local st = tag_stats[seg.key]
                 local r = line_index and st.r_for_line[line_index] or (st.repeat_base_r + expand_index)
                 local idx = st.dir == "vertical" and (r + c * st.r) or (r * st.c + c)
+                if col.before then
+                    table.insert(parts, "{" .. prefix .. "[" .. idx .. "].before}")
+                end
                 table.insert(parts, "{" .. prefix .. "[" .. idx .. "]." .. field_key .. ":" .. w .. suffix .. "}")
+                if col.after then
+                    table.insert(parts, "{" .. prefix .. "[" .. idx .. "].after}")
+                end
             else
+                if col.before then
+                    table.insert(parts, "{before}")
+                end
                 table.insert(parts, "{" .. col.field .. ":" .. w .. suffix .. "}")
+                if col.after then
+                    table.insert(parts, "{after}")
+                end
             end
         end
     end

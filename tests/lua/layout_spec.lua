@@ -98,6 +98,38 @@ describe("layout.expand", function()
         end)
     end)
 
+    describe("装飾用プレースホルダ（before/after）", function()
+        it("before=trueの配列グループタグは直前に{field[i].before}を生成する", function()
+            local columns = { id = { field = "files[].name", before = true } }
+            local lines = layout.expand("@#id##", columns, 80, 1)
+            assert.equals("{files[0].before}{files[0].name:5}", lines[1])
+        end)
+
+        it("after=trueの配列グループタグは直後に{field[i].after}を生成する", function()
+            local columns = { id = { field = "files[].name", after = true } }
+            local lines = layout.expand("@#id##", columns, 80, 1)
+            assert.equals("{files[0].name:5}{files[0].after}", lines[1])
+        end)
+
+        it("before/afterを両方指定すると前後両方に生成される", function()
+            local columns = { id = { field = "files[].name", before = true, after = true } }
+            local lines = layout.expand("@#id##", columns, 80, 1)
+            assert.equals("{files[0].before}{files[0].name:5}{files[0].after}", lines[1])
+        end)
+
+        it("非配列カラムのbefore/afterは{before}/{after}を生成する", function()
+            local columns = { id = { field = "cwd", before = true, after = true } }
+            local lines = layout.expand(" #id##", columns, 80, 1)
+            assert.equals("{before}{cwd:5}{after}", lines[1])
+        end)
+
+        it("before/afterを省略した場合は装飾用プレースホルダを生成しない", function()
+            local columns = { id = { field = "files[].name" } }
+            local lines = layout.expand("@#id##", columns, 80, 1)
+            assert.equals("{files[0].name:5}", lines[1])
+        end)
+    end)
+
     describe("出力配列の構造", function()
         it("要素数が画面高さと一致する", function()
             local tmpl = " header\n@#id##\n footer"

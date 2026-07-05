@@ -194,6 +194,46 @@ columns定義:
 | `flex` | boolean | 任意 | trueのとき画面幅に応じて伸縮 |
 | `align` | string | 任意 | `"left"`（デフォルト）または `"right"` |
 | `dir` | string | 任意 | `"vertical"`または`"horizontal"`。配列グループでのみ意味を持ち、省略時は`"horizontal"` |
+| `before` | boolean | 任意 | trueのとき、このタグの直前に装飾用プレースホルダを生成する |
+| `after` | boolean | 任意 | trueのとき、このタグの直後に装飾用プレースホルダを生成する |
+
+### カーソル位置などの装飾（before/after）
+
+ファイル名を反転表示するなど、特定の1行だけを装飾したい場合の仕組み。`layout.expand`自体はカーソル位置を一切知らず、装飾内容の決定は呼び出し側（`fm.lua`）の`vars`構築時に委ねる。
+
+`columns[key].before`または`columns[key].after`が`true`のカラムは、出力テンプレートにおいてタグの前後に幅指定なしのプレースホルダが追加される。
+
+| field の記述 | 生成される出力（before/afterなし） | 生成される出力（before/afterあり） |
+|---|---|---|
+| `"files[].name"`（配列グループ、`before=true`） | `{files[i].name:N}` | `{files[i].before}{files[i].name:N}` |
+| `"files[].size"`（配列グループ、`after=true`） | `{files[i].size:N}` | `{files[i].size:N}{files[i].after}` |
+| 非配列カラム（`before=true`） | `{field:N}` | `{before}{field:N}` |
+
+- プレースホルダ名は固定で `before` / `after`。配列グループの場合は他のフィールドと同じインデックス `i` を使う（`{files[i].before}`）
+- 幅指定を持たないため、`template.render`のパディング計算には一切影響しない
+- `vars`にキーが存在しない場合は空文字列に展開される（`template.render`の既存仕様）ため、装飾しない行では`vars`に何も設定しなくてよい
+- `fm.lua`側は、カーソル行に対応するインデックスの`vars["files[i].before"]`にのみエスケープシーケンスなどの文字列を設定すればよい
+
+使用例:
+
+```lua
+columns = {
+    name = { field = "files[].name", flex = true, dir = "vertical", before = true },
+    size = { field = "files[].size", align = "right", dir = "vertical", after = true },
+}
+
+-- fm.lua の build_vars 内、カーソル行（例: files[3]）のみ装飾する場合
+vars["files[3].before"] = "\27[7m"
+vars["files[3].after"] = "\27[0m"
+```
+
+出力テンプレート（一部）:
+
+```
+{files[3].before}{files[3].name:40}  {files[3].size:6:right}{files[3].after}
+```
+
+`template.render`適用後、カーソル行のファイル名とサイズ（間のスペースを含む）が反転表示される。
 
 列の対応付け:
 

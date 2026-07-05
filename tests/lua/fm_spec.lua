@@ -62,21 +62,27 @@ describe("fm", function()
         assert.equals("fm  /root", screen.writes[0])
     end)
 
-    it("初期状態ではカーソルが1行目にある", function()
+    it("初期状態ではカーソル行(1行目)のファイル名が反転表示のエスケープシーケンスで囲まれる", function()
         on_init()
-        assert.equals(">", screen.writes[1]:sub(1, 1))
+        assert.is_not_nil(screen.writes[1]:find("\27[7m", 1, true))
+        assert.is_not_nil(screen.writes[1]:find("\27[0m", 1, true))
+    end)
+
+    it("カーソルがない行には反転表示のエスケープシーケンスが含まれない", function()
+        on_init()
+        assert.is_nil(screen.writes[2]:find("\27[7m", 1, true))
     end)
 
     it("jキーでカーソルが次の行に移動する", function()
         on_init()
         on_key("j")
-        assert.equals(">", screen.writes[2]:sub(1, 1))
+        assert.is_not_nil(screen.writes[2]:find("\27[7m", 1, true))
     end)
 
     it("先頭行でkキーを押してもカーソルは1行目のまま", function()
         on_init()
         on_key("k")
-        assert.equals(">", screen.writes[1]:sub(1, 1))
+        assert.is_not_nil(screen.writes[1]:find("\27[7m", 1, true))
     end)
 
     it("qキーを押すとfalseが返る", function()
@@ -106,7 +112,7 @@ describe("fm", function()
         on_key("j") -- カーソルをディレクトリ"sub"に合わせる
         on_key("enter") -- "sub"に入る
         on_key("enter") -- ".."で親("/root")に戻る
-        assert.equals(">", screen.writes[2]:sub(1, 1))
+        assert.is_not_nil(screen.writes[2]:find("\27[7m", 1, true))
     end)
 
     it("ルート直下のディレクトリへ移動してもパスが二重スラッシュにならない", function()
@@ -137,7 +143,7 @@ describe("fm", function()
         on_key("j") -- カーソルをディレクトリ"sub"に合わせる
         on_key("enter") -- "sub"に入る
         on_key("backspace") -- 親("/root")に戻る
-        assert.equals(">", screen.writes[2]:sub(1, 1))
+        assert.is_not_nil(screen.writes[2]:find("\27[7m", 1, true))
     end)
 
     it("grepの終了コードが0のファイルはlessで開く", function()

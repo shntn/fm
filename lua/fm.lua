@@ -57,12 +57,15 @@ end
 
 local NAME_WIDTH = 40
 
+-- カーソル行の反転表示に使うエスケープシーケンス
+local CURSOR_ON = "\27[7m"
+local CURSOR_OFF = "\27[0m"
+
 local COLUMNS = {
-    m = { field = "files[].mark" },
-    n = { field = "files[].name" },
+    n = { field = "files[].name", before = true },
     p = { field = "files[].perm" },
     s = { field = "files[].size", align = "right" },
-    d = { field = "files[].modified" },
+    d = { field = "files[].modified", after = true },
 }
 
 -- 幅width、タグ名keyの #key###...# 形式のタグ文字列を組み立てる
@@ -72,7 +75,7 @@ end
 
 local TMPL = table.concat({
     " fm  {dir}",
-    "@" .. tag("m", 2) .. " " .. tag("n", NAME_WIDTH) .. "  " .. tag("p", 9)
+    "@" .. "   " .. tag("n", NAME_WIDTH) .. "  " .. tag("p", 9)
         .. "  " .. tag("s", 8) .. "  " .. tag("d", 19),
     " j/down:↓  k/up:↑  enter:開く  backspace:親へ  q:終了",
 }, "\n")
@@ -98,11 +101,14 @@ local function build_vars(list_h)
         local index = offset + r + 1
         local f = files[index]
         local prefix = "files[" .. r .. "]."
-        vars[prefix .. "mark"] = (f and index == cursor) and ">" or " "
         vars[prefix .. "name"] = f and display_name(f) or ""
         vars[prefix .. "perm"] = f and f.perm or ""
         vars[prefix .. "size"] = f and tostring(f.size) or ""
         vars[prefix .. "modified"] = f and f.modified or ""
+        if f and index == cursor then
+            vars[prefix .. "before"] = CURSOR_ON
+            vars[prefix .. "after"] = CURSOR_OFF
+        end
     end
     return vars
 end
