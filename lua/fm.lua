@@ -1,11 +1,15 @@
 local layout = require("layout")
 local template = require("template")
+-- 文字列の表示幅を数える処理には必ずutf8widthを使うこと。#strのバイト長では、
+-- 日本語などのマルチバイト文字や、macOSがNFD正規化する濁点付き仮名で幅がずれる
 local utf8width = require("utf8width")
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 -- 状態
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 
+-- dirとファイル名の結合には必ずjoin_path()を使うこと。".."演算子で直接連結すると、
+-- dirがルート"/"のときに"//"になる（過去に実際に発生した不具合）
 local dir = fs.cwd()
 local files = {}
 local cursor = 1
@@ -217,6 +221,8 @@ local OPENERS = _G.OPENERS or {
 }
 
 -- シェルコマンドの引数として安全な形にpathをクォートする
+-- fs.run()に渡す文字列にファイル名を組み込む際は、必ずこれを経由すること
+-- （スペースや引用符を含むファイル名でコマンドが壊れる、または意図しないコマンド実行につながる）
 local function shell_quote(path)
     return "'" .. path:gsub("'", "'\\''") .. "'"
 end
