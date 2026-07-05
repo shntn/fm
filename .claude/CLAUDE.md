@@ -32,8 +32,10 @@ fm - ターミナルのファイルマネージャ
 変更を加えるたびに、以下の順序で実行してください。 
 
 1. `cargo check` - タイプエラーを修正する 
-1. `cargo test` - 失敗したテストを修正する
-2. `cargo clippy` - Lintエラーを修正する
+2. `cargo test` - 失敗したテストを修正する
+3. `busted tests/lua/` - 失敗したテストを修正する
+4. `cargo clippy` - Lintエラーを修正する
+5. `luacheck lua/` - Lintエラーを修正する
 
 ## Conventions
 
