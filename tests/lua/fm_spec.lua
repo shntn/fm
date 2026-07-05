@@ -105,6 +105,22 @@ describe("fm", function()
         assert.equals(">", screen.writes[2]:sub(1, 1))
     end)
 
+    it("backspaceキーで親ディレクトリに移動する", function()
+        on_init()
+        on_key("j") -- カーソルをディレクトリ"sub"に合わせる
+        on_key("enter") -- "sub"に入る
+        on_key("backspace") -- 親("/root")に戻る
+        assert.equals("fm  /root", screen.writes[0])
+    end)
+
+    it("backspaceキーで親に戻ったとき、元いた子ディレクトリの位置にカーソルが合う", function()
+        on_init()
+        on_key("j") -- カーソルをディレクトリ"sub"に合わせる
+        on_key("enter") -- "sub"に入る
+        on_key("backspace") -- 親("/root")に戻る
+        assert.equals(">", screen.writes[2]:sub(1, 1))
+    end)
+
     it("grepの終了コードが0のファイルはlessで開く", function()
         _G.fs.exit_code = 0
         on_init()

@@ -70,7 +70,7 @@ local TMPL = table.concat({
     " fm  {dir}",
     "@" .. tag("m", 2) .. " " .. tag("n", NAME_WIDTH) .. "  " .. tag("p", 9)
         .. "  " .. tag("s", 8) .. "  " .. tag("d", 19),
-    " j/down:↓  k/up:↑  enter:開く  q:終了",
+    " j/down:↓  k/up:↑  enter:開く  backspace:親へ  q:終了",
 }, "\n")
 
 -- カーソルが含まれるページの先頭インデックス(0始まり)を返す
@@ -190,6 +190,11 @@ local function enter_directory(newdir, cursor_name)
     draw()
 end
 
+-- 親ディレクトリへ移動する。戻った後は元いた子ディレクトリの位置にカーソルを合わせる
+local function go_to_parent()
+    enter_directory(parent_dir(dir), last_segment(dir))
+end
+
 -- 拡張子ごとに開くコマンドを定義する。$C=拡張子ありファイル名、$X=拡張子なしファイル名、$P=カレントディレクトリのフルパス
 -- 将来的にコンフィグファイルから読み込む想定で、事前にグローバルのOPENERSが定義されていればそれを使う
 local OPENERS = _G.OPENERS or {
@@ -252,8 +257,7 @@ local function open_selected()
             open_file(f)
         end
     elseif f.name == ".." then
-        -- 親ディレクトリへ。戻った後は元いた子ディレクトリの位置にカーソルを合わせる
-        enter_directory(parent_dir(dir), last_segment(dir))
+        go_to_parent()
     else
         enter_directory(dir .. "/" .. f.name, nil)
     end
@@ -287,6 +291,8 @@ function on_key(key)
         move_cursor_up()
     elseif key == "enter" then
         open_selected()
+    elseif key == "backspace" then
+        go_to_parent()
     end
 
     return true
