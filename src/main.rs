@@ -1,10 +1,5 @@
-mod terminal;
-mod screen;
-mod filesystem;
-mod lua_bridge;
-
-use terminal::{RawModeGuard, read_key};
-use lua_bridge::LuaBridge;
+use fm::terminal::{RawModeGuard, read_key};
+use fm::lua_bridge::LuaBridge;
 
 fn main() {
     let bridge = LuaBridge::new().unwrap_or_else(|e| {
