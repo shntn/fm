@@ -32,13 +32,20 @@ local TMPL = table.concat({
     " j/down:↓  k/up:↑  enter:開く  q:終了",
 }, "\n")
 
+-- カーソルが含まれるページの先頭インデックス(0始まり)を返す
+local function page_offset(list_h)
+    return math.floor((cursor - 1) / list_h) * list_h
+end
+
 -- ファイル一覧をtemplate.render用の変数テーブルに変換する
 local function build_vars(list_h)
+    local offset = page_offset(list_h)
     local vars = { dir = dir }
     for r = 0, list_h - 1 do
-        local f = files[r + 1]
+        local index = offset + r + 1
+        local f = files[index]
         local prefix = "files[" .. r .. "]."
-        vars[prefix .. "mark"] = (f and r + 1 == cursor) and ">" or " "
+        vars[prefix .. "mark"] = (f and index == cursor) and ">" or " "
         vars[prefix .. "name"] = f and (f.is_dir and (f.name .. "/") or f.name) or ""
         vars[prefix .. "perm"] = f and f.perm or ""
         vars[prefix .. "size"] = f and tostring(f.size) or ""

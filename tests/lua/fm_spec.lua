@@ -99,6 +99,26 @@ describe("fm", function()
         assert.equals(">", screen.writes[2]:sub(1, 1))
     end)
 
+    it("ファイル数が画面に収まらない場合、ページ単位で表示を切り替える", function()
+        _G.screen.get_size = function() return 80, 5 end -- list_h = 3
+        _G.fs.list = function()
+            return {
+                { name = "a.txt", is_dir = false, size = 1, modified = "", perm = "rw-r--r--" },
+                { name = "b.txt", is_dir = false, size = 1, modified = "", perm = "rw-r--r--" },
+                { name = "c.txt", is_dir = false, size = 1, modified = "", perm = "rw-r--r--" },
+                { name = "d.txt", is_dir = false, size = 1, modified = "", perm = "rw-r--r--" },
+                { name = "e.txt", is_dir = false, size = 1, modified = "", perm = "rw-r--r--" },
+            }
+        end
+
+        on_init()
+        on_key("j") -- cursor: ".."(1) -> "a.txt"(2)
+        on_key("j") -- cursor: "a.txt"(2) -> "b.txt"(3)
+        on_key("j") -- cursor: "b.txt"(3) -> "c.txt"(4) 次ページへ切り替わる
+
+        assert.is_not_nil(screen.writes[1]:find("c.txt", 1, true))
+    end)
+
     it("fs.listがエラーを返す場合、エラーメッセージを描画する", function()
         _G.fs.cwd = function() return "/missing" end
         dofile("lua/fm.lua")
