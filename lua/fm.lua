@@ -141,9 +141,47 @@ local function enter_directory(newdir, cursor_name)
     draw()
 end
 
+-- 拡張子ごとに開くコマンドを定義する。$C=拡張子ありファイル名、$X=拡張子なしファイル名、$P=カレントディレクトリのフルパス
+-- 将来的にコンフィグファイルから読み込む想定で、事前にグローバルのOPENERSが定義されていればそれを使う
+local OPENERS = _G.OPENERS or {
+    zip = "unzip -l $P/$C | less",
+    tar = "tar tvf $P/$C | less",
+    gz = "tar tzvf $P/$C | less",
+    md = "glow -p $P/$C",
+}
+
 -- シェルコマンドの引数として安全な形にpathをクォートする
 local function shell_quote(path)
     return "'" .. path:gsub("'", "'\\''") .. "'"
+end
+
+-- nameの拡張子を返す。拡張子がない場合（.gitignoreのようなドットファイルを含む）はnilを返す
+local function file_extension(name)
+    local base, ext = name:match("^(.+)%.([^.]+)$")
+    if base and base ~= "" then
+        return ext
+    end
+    return nil
+end
+
+-- nameから拡張子を取り除いた部分を返す
+local function strip_extension(name)
+    local ext = file_extension(name)
+    if not ext then
+        return name
+    end
+    return name:sub(1, #name - #ext - 1)
+end
+
+-- cmd内の$C/$X/$Pを、シェルクォートしたvaluesの値に置き換える
+local function expand_command(cmd, values)
+    return (cmd:gsub("%$%a", function(token)
+        local value = values[token]
+        if not value then
+            return token
+        end
+        return shell_quote(value)
+    end))
 end
 
 -- pathがテキストファイルならtrue、バイナリファイルならfalseを返す
@@ -162,6 +200,13 @@ local function open_file(f)
     draw()
 end
 
+-- 拡張子に対応するコマンドでファイルを開く
+local function open_with_command(cmd_template, f)
+    local values = { ["$C"] = f.name, ["$X"] = strip_extension(f.name), ["$P"] = dir }
+    fs.run(expand_command(cmd_template, values))
+    draw()
+end
+
 -- カーソル位置の要素を開く
 local function open_selected()
     local f = files[cursor]
@@ -169,7 +214,12 @@ local function open_selected()
         return
     end
     if not f.is_dir then
-        open_file(f)
+        local cmd_template = OPENERS[file_extension(f.name)]
+        if cmd_template then
+            open_with_command(cmd_template, f)
+        else
+            open_file(f)
+        end
     elseif f.name == ".." then
         -- 親ディレクトリへ。戻った後は元いた子ディレクトリの位置にカーソルを合わせる
         enter_directory(parent_dir(dir), last_segment(dir))

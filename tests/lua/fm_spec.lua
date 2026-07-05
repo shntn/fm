@@ -45,6 +45,7 @@ describe("fm", function()
         _G.screen = nil
         _G.on_init = nil
         _G.on_key = nil
+        _G.OPENERS = nil
     end)
 
     it("on_initを呼ぶと画面がクリアされる", function()
@@ -139,6 +140,48 @@ describe("fm", function()
         on_key("j") -- カーソルを"it's.txt"に合わせる
         on_key("enter")
         assert.is_not_nil(fs.calls[#fs.calls]:find("it'\\''s.txt'", 1, true))
+    end)
+
+    it("拡張子に対応するコマンドが定義されている場合はそちらを実行する", function()
+        _G.OPENERS = { txt = "myviewer $P/$C" }
+        dofile("lua/fm.lua")
+        on_init()
+        on_key("j") -- カーソルを"sub"に合わせる
+        on_key("j") -- カーソルを"a.txt"に合わせる
+        on_key("enter")
+        assert.equals("myviewer '/root'/'a.txt'", fs.calls[#fs.calls])
+    end)
+
+    it("$Xは拡張子を除いたファイル名に展開される", function()
+        _G.OPENERS = { txt = "viewer $X" }
+        dofile("lua/fm.lua")
+        on_init()
+        on_key("j") -- カーソルを"sub"に合わせる
+        on_key("j") -- カーソルを"a.txt"に合わせる
+        on_key("enter")
+        assert.equals("viewer 'a'", fs.calls[#fs.calls])
+    end)
+
+    it("拡張子に対応するコマンドがない場合はデフォルト動作(less/xxd)にフォールバックする", function()
+        _G.OPENERS = { md = "glow $C" }
+        dofile("lua/fm.lua")
+        on_init()
+        on_key("j") -- カーソルを"sub"に合わせる
+        on_key("j") -- カーソルを"a.txt"に合わせる
+        on_key("enter")
+        assert.is_not_nil(fs.calls[#fs.calls]:find("less", 1, true))
+    end)
+
+    it("ドットファイル（拡張子なし）は拡張子コマンドの対象にならない", function()
+        _G.OPENERS = { gitignore = "should-not-run $C" }
+        _G.fs.list = function()
+            return { { name = ".gitignore", is_dir = false, size = 5, modified = "", perm = "rw-r--r--" } }
+        end
+        dofile("lua/fm.lua")
+        on_init()
+        on_key("j") -- カーソルを".gitignore"に合わせる
+        on_key("enter")
+        assert.is_nil(fs.calls[#fs.calls]:find("should-not-run", 1, true))
     end)
 
     it("ファイル数が画面に収まらない場合、ページ単位で表示を切り替える", function()
