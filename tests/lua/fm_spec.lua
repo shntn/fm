@@ -12,20 +12,25 @@ local function make_screen(width, height)
 end
 
 local function make_fs()
-    return {
-        cwd = function() return "/root" end,
-        list = function(path)
-            if path == "/root" then
-                return {
-                    { name = "sub", is_dir = true, size = 0, modified = "2025-01-01 00:00:00", perm = "rwxr-xr-x" },
-                    { name = "a.txt", is_dir = false, size = 10, modified = "2025-01-01 00:00:00", perm = "rw-r--r--" },
-                }
-            elseif path == "/root/sub" then
-                return {}
-            end
-            return nil, "not found"
-        end,
-    }
+    local fs = { calls = {}, exit_code = 0 }
+    fs.cwd = function() return "/root" end
+    fs.list = function(path)
+        if path == "/root" then
+            return {
+                { name = "sub", is_dir = true, size = 0, modified = "2025-01-01 00:00:00", perm = "rwxr-xr-x" },
+                { name = "a.txt", is_dir = false, size = 10, modified = "2025-01-01 00:00:00", perm = "rw-r--r--" },
+                { name = "empty.txt", is_dir = false, size = 0, modified = "2025-01-01 00:00:00", perm = "rw-r--r--" },
+            }
+        elseif path == "/root/sub" then
+            return {}
+        end
+        return nil, "not found"
+    end
+    fs.run = function(cmd)
+        table.insert(fs.calls, cmd)
+        return fs.exit_code
+    end
+    return fs
 end
 
 describe("fm", function()
@@ -97,6 +102,43 @@ describe("fm", function()
         on_key("enter") -- "sub"に入る
         on_key("enter") -- ".."で親("/root")に戻る
         assert.equals(">", screen.writes[2]:sub(1, 1))
+    end)
+
+    it("grepの終了コードが0のファイルはlessで開く", function()
+        _G.fs.exit_code = 0
+        on_init()
+        on_key("j") -- カーソルを"sub"に合わせる
+        on_key("j") -- カーソルを"a.txt"に合わせる
+        on_key("enter")
+        assert.is_not_nil(fs.calls[#fs.calls]:find("less", 1, true))
+    end)
+
+    it("grepの終了コードが0以外のファイルはxxd経由でlessに表示する", function()
+        _G.fs.exit_code = 1
+        on_init()
+        on_key("j") -- カーソルを"sub"に合わせる
+        on_key("j") -- カーソルを"a.txt"に合わせる
+        on_key("enter")
+        assert.is_not_nil(fs.calls[#fs.calls]:find("xxd", 1, true))
+    end)
+
+    it("0バイトのファイルはgrepを実行せずlessで開く", function()
+        on_init()
+        on_key("j") -- カーソルを"sub"に合わせる
+        on_key("j") -- カーソルを"a.txt"に合わせる
+        on_key("j") -- カーソルを"empty.txt"に合わせる
+        on_key("enter")
+        assert.equals(1, #fs.calls)
+    end)
+
+    it("ファイル名に含まれるシングルクォートを安全にエスケープする", function()
+        _G.fs.list = function()
+            return { { name = "it's.txt", is_dir = false, size = 5, modified = "", perm = "rw-r--r--" } }
+        end
+        on_init()
+        on_key("j") -- カーソルを"it's.txt"に合わせる
+        on_key("enter")
+        assert.is_not_nil(fs.calls[#fs.calls]:find("it'\\''s.txt'", 1, true))
     end)
 
     it("ファイル数が画面に収まらない場合、ページ単位で表示を切り替える", function()

@@ -141,13 +141,36 @@ local function enter_directory(newdir, cursor_name)
     draw()
 end
 
+-- シェルコマンドの引数として安全な形にpathをクォートする
+local function shell_quote(path)
+    return "'" .. path:gsub("'", "'\\''") .. "'"
+end
+
+-- pathがテキストファイルならtrue、バイナリファイルならfalseを返す
+local function is_text_file(path)
+    return fs.run("grep -Iq '' " .. shell_quote(path)) == 0
+end
+
+-- ファイルを開く。テキストファイルはlessで、バイナリファイルはダンプをlessで表示する
+local function open_file(f)
+    local quoted = shell_quote(dir .. "/" .. f.name)
+    if f.size == 0 or is_text_file(dir .. "/" .. f.name) then
+        fs.run("less " .. quoted)
+    else
+        fs.run("xxd " .. quoted .. " | less")
+    end
+    draw()
+end
+
 -- カーソル位置の要素を開く
 local function open_selected()
     local f = files[cursor]
-    if not f or not f.is_dir then
+    if not f then
         return
     end
-    if f.name == ".." then
+    if not f.is_dir then
+        open_file(f)
+    elseif f.name == ".." then
         -- 親ディレクトリへ。戻った後は元いた子ディレクトリの位置にカーソルを合わせる
         enter_directory(parent_dir(dir), last_segment(dir))
     else
