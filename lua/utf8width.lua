@@ -10,7 +10,6 @@ end
 -- East Asian Wide/Fullwidth(UAX #11)の範囲
 local WIDE_RANGES = {
     { 0x1100, 0x115F },   -- ハングル字母
-    { 0x2014, 0x2015 },   -- emダッシュ・水平線（和文中では全角で描画されることが多い）
     { 0x2E80, 0x303E },   -- CJK部首・記号
     { 0x3041, 0x33FF },   -- ひらがな・カタカナ・CJK互換
     { 0x3400, 0x4DBF },   -- CJK統合漢字拡張A
@@ -24,8 +23,12 @@ local WIDE_RANGES = {
 }
 
 -- East Asian Ambiguous(UAX #11)の範囲の一部
+-- emダッシュ・三点リーダーは端末・フォントによって全角/半角の描画が分かれるため、
+-- Wideと決め打ちせずAmbiguousとして扱い、ambiguous_widthの設定に委ねる
 local AMBIGUOUS_RANGES = {
     { 0x00A1, 0x00A1 },
+    { 0x2014, 0x2015 },   -- emダッシュ・水平線
+    { 0x2026, 0x2026 },   -- 三点リーダー（省略記号）
     { 0x00A4, 0x00A4 },
     { 0x00A7, 0x00A8 },
     { 0x00B0, 0x00B4 },

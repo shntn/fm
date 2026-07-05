@@ -235,6 +235,26 @@ describe("fm", function()
         assert.is_not_nil(screen.writes[2]:find("….pdf", 1, true))
     end)
 
+    it("ファイルサイズはK/M/G/T単位の人間可読な形式で表示される", function()
+        _G.fs.list = function()
+            return {
+                { name = "big.mkv", is_dir = false, size = 592919787, modified = "", perm = "rw-r--r--" },
+            }
+        end
+        on_init()
+        assert.is_not_nil(screen.writes[2]:find("565.5M", 1, true))
+    end)
+
+    it("1024バイト未満のファイルサイズは単位を付けずバイト数のまま表示される", function()
+        _G.fs.list = function()
+            return {
+                { name = "small.txt", is_dir = false, size = 10, modified = "", perm = "rw-r--r--" },
+            }
+        end
+        on_init()
+        assert.is_not_nil(screen.writes[2]:find("10", 1, true))
+    end)
+
     it("ディレクトリ名が列幅を超える場合も切り詰め、末尾の'/'は保持する", function()
         _G.fs.list = function()
             return {

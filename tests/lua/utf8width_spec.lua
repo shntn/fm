@@ -22,10 +22,6 @@ describe("utf8width.width", function()
         assert.equals(4, utf8width.width("aあb"))
     end)
 
-    it("emダッシュは和文中で全角として描画されるため幅2として数える", function()
-        assert.equals(2, utf8width.width("—"))
-    end)
-
     it("Ambiguous文字はデフォルトで幅1として数える", function()
         assert.equals(2, utf8width.width("αβ"))
     end)
@@ -33,6 +29,14 @@ describe("utf8width.width", function()
     it("set_ambiguous_widthで幅2に切り替えられる", function()
         utf8width.set_ambiguous_width(2)
         assert.equals(4, utf8width.width("αβ"))
+    end)
+
+    it("emダッシュはAmbiguous文字としてデフォルトで幅1として数える", function()
+        assert.equals(1, utf8width.width("—"))
+    end)
+
+    it("省略記号(…)はAmbiguous文字としてデフォルトで幅1として数える", function()
+        assert.equals(1, utf8width.width("…"))
     end)
 
     it("不正なUTF-8バイト列の場合はバイト長にフォールバックする", function()

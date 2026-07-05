@@ -51,6 +51,21 @@ local function truncate_name(name, max_width)
     return utf8width.truncate(base, budget) .. suffix
 end
 
+-- バイト数をK/M/G/T単位の人間可読な文字列に変換する（ls -lhと同様の書式）
+local function format_size(bytes)
+    local units = { "", "K", "M", "G", "T" }
+    local value = bytes
+    local unit_index = 1
+    while value >= 1024 and unit_index < #units do
+        value = value / 1024
+        unit_index = unit_index + 1
+    end
+    if unit_index == 1 then
+        return tostring(value)
+    end
+    return string.format("%.1f%s", value, units[unit_index])
+end
+
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 -- 画面描画
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
@@ -103,7 +118,7 @@ local function build_vars(list_h)
         local prefix = "files[" .. r .. "]."
         vars[prefix .. "name"] = f and display_name(f) or ""
         vars[prefix .. "perm"] = f and f.perm or ""
-        vars[prefix .. "size"] = f and tostring(f.size) or ""
+        vars[prefix .. "size"] = f and format_size(f.size) or ""
         vars[prefix .. "modified"] = f and f.modified or ""
         if f and index == cursor then
             vars[prefix .. "before"] = CURSOR_ON
