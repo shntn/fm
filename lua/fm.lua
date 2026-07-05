@@ -1,5 +1,6 @@
 local layout = require("layout")
 local template = require("template")
+local utf8width = require("utf8width")
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 -- 状態
@@ -10,8 +11,47 @@ local files = {}
 local cursor = 1
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+-- ユーティリティ
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+
+-- nameの拡張子を返す。拡張子がない場合（.gitignoreのようなドットファイルを含む）はnilを返す
+local function file_extension(name)
+    local base, ext = name:match("^(.+)%.([^.]+)$")
+    if base and base ~= "" then
+        return ext
+    end
+    return nil
+end
+
+-- nameから拡張子を取り除いた部分を返す
+local function strip_extension(name)
+    local ext = file_extension(name)
+    if not ext then
+        return name
+    end
+    return name:sub(1, #name - #ext - 1)
+end
+
+-- nameの表示幅がmax_widthを超える場合、拡張子は残したまま手前を省略記号(…)に置き換える
+local function truncate_name(name, max_width)
+    if utf8width.width(name) <= max_width then
+        return name
+    end
+    local ext = file_extension(name)
+    if not ext then
+        return utf8width.truncate(name, max_width)
+    end
+    local suffix = "." .. ext
+    local base = strip_extension(name)
+    local budget = math.max(max_width - utf8width.width(suffix), 0)
+    return utf8width.truncate(base, budget) .. suffix
+end
+
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 -- 画面描画
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+
+local NAME_WIDTH = 40
 
 local COLUMNS = {
     m = { field = "files[].mark" },
@@ -28,13 +68,22 @@ end
 
 local TMPL = table.concat({
     " fm  {dir}",
-    "@" .. tag("m", 2) .. " " .. tag("n", 40) .. "  " .. tag("p", 9) .. "  " .. tag("s", 8) .. "  " .. tag("d", 19),
+    "@" .. tag("m", 2) .. " " .. tag("n", NAME_WIDTH) .. "  " .. tag("p", 9)
+        .. "  " .. tag("s", 8) .. "  " .. tag("d", 19),
     " j/down:↓  k/up:↑  enter:開く  q:終了",
 }, "\n")
 
 -- カーソルが含まれるページの先頭インデックス(0始まり)を返す
 local function page_offset(list_h)
     return math.floor((cursor - 1) / list_h) * list_h
+end
+
+-- ファイル一覧表示用に、切り詰め・ディレクトリの'/'付与を行った名前を返す
+local function display_name(f)
+    if f.is_dir then
+        return truncate_name(f.name, NAME_WIDTH - 1) .. "/"
+    end
+    return truncate_name(f.name, NAME_WIDTH)
 end
 
 -- ファイル一覧をtemplate.render用の変数テーブルに変換する
@@ -46,7 +95,7 @@ local function build_vars(list_h)
         local f = files[index]
         local prefix = "files[" .. r .. "]."
         vars[prefix .. "mark"] = (f and index == cursor) and ">" or " "
-        vars[prefix .. "name"] = f and (f.is_dir and (f.name .. "/") or f.name) or ""
+        vars[prefix .. "name"] = f and display_name(f) or ""
         vars[prefix .. "perm"] = f and f.perm or ""
         vars[prefix .. "size"] = f and tostring(f.size) or ""
         vars[prefix .. "modified"] = f and f.modified or ""
@@ -153,24 +202,6 @@ local OPENERS = _G.OPENERS or {
 -- シェルコマンドの引数として安全な形にpathをクォートする
 local function shell_quote(path)
     return "'" .. path:gsub("'", "'\\''") .. "'"
-end
-
--- nameの拡張子を返す。拡張子がない場合（.gitignoreのようなドットファイルを含む）はnilを返す
-local function file_extension(name)
-    local base, ext = name:match("^(.+)%.([^.]+)$")
-    if base and base ~= "" then
-        return ext
-    end
-    return nil
-end
-
--- nameから拡張子を取り除いた部分を返す
-local function strip_extension(name)
-    local ext = file_extension(name)
-    if not ext then
-        return name
-    end
-    return name:sub(1, #name - #ext - 1)
 end
 
 -- cmd内の$C/$X/$Pを、シェルクォートしたvaluesの値に置き換える

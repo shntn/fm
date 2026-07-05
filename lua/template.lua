@@ -1,7 +1,9 @@
+local utf8width = require("utf8width")
+
 local template = {}
 
 local function pad(value, width, align)
-    local len = #value
+    local len = utf8width.width(value)
     if len >= width then
         return value
     end

@@ -32,6 +32,16 @@ describe("template.render", function()
         assert.equals("abcdefgh", result)
     end)
 
+    it("全角文字を含む値は表示幅を基準にパディングする", function()
+        local result = template.render("{name:6}", { name = "あい" })
+        assert.equals("あい  ", result)
+    end)
+
+    it("全角文字を含む値が幅を超える場合はそのまま展開する", function()
+        local result = template.render("{name:5}", { name = "漢字漢字" })
+        assert.equals("漢字漢字", result)
+    end)
+
     it("角括弧とドットを含むキー（layout.expandの出力形式）を展開できる", function()
         local result = template.render("{files[0].name:10}", { ["files[0].name"] = "README.md" })
         assert.equals("README.md ", result)

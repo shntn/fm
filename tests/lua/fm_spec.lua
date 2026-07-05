@@ -184,6 +184,26 @@ describe("fm", function()
         assert.is_nil(fs.calls[#fs.calls]:find("should-not-run", 1, true))
     end)
 
+    it("ファイル名が列幅を超える場合、拡張子を残して省略記号で切り詰める", function()
+        _G.fs.list = function()
+            return {
+                { name = string.rep("a", 50) .. ".pdf", is_dir = false, size = 1, modified = "", perm = "rw-r--r--" },
+            }
+        end
+        on_init()
+        assert.is_not_nil(screen.writes[2]:find("….pdf", 1, true))
+    end)
+
+    it("ディレクトリ名が列幅を超える場合も切り詰め、末尾の'/'は保持する", function()
+        _G.fs.list = function()
+            return {
+                { name = string.rep("d", 50), is_dir = true, size = 0, modified = "", perm = "rwxr-xr-x" },
+            }
+        end
+        on_init()
+        assert.is_not_nil(screen.writes[2]:find("…/", 1, true))
+    end)
+
     it("ファイル数が画面に収まらない場合、ページ単位で表示を切り替える", function()
         _G.screen.get_size = function() return 80, 5 end -- list_h = 3
         _G.fs.list = function()
