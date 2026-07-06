@@ -3,6 +3,7 @@ local template = require("template")
 -- 文字列の表示幅を数える処理には必ずutf8widthを使うこと。#strのバイト長では、
 -- 日本語などのマルチバイト文字や、macOSがNFD正規化する濁点付き仮名で幅がずれる
 local utf8width = require("utf8width")
+local view = require("view")
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 -- 状態
@@ -70,30 +71,11 @@ end
 -- 画面描画
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 
-local NAME_WIDTH = 40
+local NAME_WIDTH = view.NAME_WIDTH
 
 -- カーソル行の反転表示に使うエスケープシーケンス
 local CURSOR_ON = "\27[7m"
 local CURSOR_OFF = "\27[0m"
-
-local COLUMNS = {
-    n = { field = "files[].name", before = true },
-    p = { field = "files[].perm" },
-    s = { field = "files[].size", align = "right" },
-    d = { field = "files[].modified", after = true },
-}
-
--- 幅width、タグ名keyの #key###...# 形式のタグ文字列を組み立てる
-local function tag(key, width)
-    return "#" .. key .. string.rep("#", width - #key - 1)
-end
-
-local TMPL = table.concat({
-    " fm  {dir}",
-    "@" .. "   " .. tag("n", NAME_WIDTH) .. "  " .. tag("p", 9)
-        .. "  " .. tag("s", 8) .. "  " .. tag("d", 19),
-    " j/down:↓  k/up:↑  enter:開く  backspace:親へ  q:終了",
-}, "\n")
 
 -- カーソルが含まれるページの先頭インデックス(0始まり)を返す
 local function page_offset(list_h)
@@ -141,7 +123,7 @@ local function draw()
     local list_h = height - 2  -- ヘッダー1行 + フッター1行
 
     local vars = build_vars(list_h)
-    local lines = layout.expand(TMPL, COLUMNS, width, height)
+    local lines = layout.expand(view.TMPL, view.COLUMNS, width, height)
 
     screen.clear()
     render_lines(lines, vars)
