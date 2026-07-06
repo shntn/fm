@@ -21,41 +21,25 @@ cargo build
 cargo run
 ```
 
-## キー操作
+## 設定ファイル
 
-| キー | 動作 |
-|---|---|
-| `j` / `↓` | カーソルを下へ移動 |
-| `k` / `↑` | カーソルを上へ移動 |
-| `enter` | ディレクトリに入る、またはファイルを開く |
-| `backspace` | 親ディレクトリへ移動 |
-| `q` / `escape` | 終了 |
+設定ファイルの優先順位
 
-## ファイルを開く
-
-カーソル位置のファイルで `enter` を押すと、拡張子に応じたコマンドで開く。
-
-- 拡張子ごとのコマンド定義（`lua/fm.lua` の `OPENERS`）がある場合はそれを実行する
-  - `$C`: ファイル名（拡張子あり）
-  - `$X`: ファイル名（拡張子なし）
-  - `$P`: カレントディレクトリのフルパス
-  - 例: `zip = "unzip -l $P/$C | less"`
-- 定義がない場合はテキストファイルを `less`、バイナリファイルは `xxd` でダンプして `less` に渡す
+1. 環境変数 `FM_CONFIG`
+2. `~/.config/fm/config.toml`
+3. 組み込みの規定値
 
 ## プロジェクト構成
 
 ```
 fm/
-├─ src/    Rust コード（terminal/screen/filesystem/lua_bridge の薄いインタフェース層）
-├─ lua/    Lua コード（fm.lua がアプリケーション本体、layout/template/utf8width が支援モジュール）
+├─ src/       Rust コード（インタフェース層）
+├─ lua/       Lua コード（アプリケーション層）
 ├─ tests/
 │  ├─ rust/  Rust の単体・結合テスト
 │  ├─ lua/   Lua の単体テスト
 │  └─ e2e/   実バイナリを疑似端末上で動かすスモークテスト（手動実行用）
-└─ docs/
-   ├─ fm-spec-v0.1.md    プロジェクト全体の仕様
-   ├─ API.md             Rust⇔Lua インタフェース仕様
-   └─ fm-internal-api.md fm.lua 内部のモジュール間API
+└─ docs/      ドキュメント
 ```
 
 ## テスト

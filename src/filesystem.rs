@@ -69,6 +69,17 @@ pub fn register(lua: &Lua) -> LuaResult<()> {
         })?,
     )?;
 
+    // fs.read_file(path) -> content | nil, error_message
+    fst.set(
+        "read_file",
+        lua.create_function(|lua, path: String| {
+            match fs::read_to_string(&path) {
+                Ok(content) => Ok((LuaValue::String(lua.create_string(&content)?), LuaValue::Nil)),
+                Err(e) => Ok((LuaValue::Nil, LuaValue::String(lua.create_string(e.to_string())?))),
+            }
+        })?,
+    )?;
+
     lua.globals().set("fs", fst)?;
     Ok(())
 }

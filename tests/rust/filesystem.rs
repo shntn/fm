@@ -94,3 +94,37 @@ mod run {
         assert_eq!(3, code);
     }
 }
+
+mod read_file {
+    use super::*;
+
+    #[test]
+    fn returns_file_content() {
+        let dir = make_temp_dir("read-file");
+        fs::write(dir.join("a.txt"), "hello").unwrap();
+
+        let lua = new_lua();
+        let content: String = lua
+            .load(format!(
+                r#"return fs.read_file("{}")"#,
+                dir.join("a.txt").display()
+            ))
+            .eval()
+            .unwrap();
+
+        assert_eq!("hello", content);
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn returns_nil_and_error_message_for_missing_path() {
+        let lua = new_lua();
+        let (content, err): (LuaValue, Option<String>) = lua
+            .load(r#"return fs.read_file("/path/does/not/exist-fm-test")"#)
+            .eval()
+            .unwrap();
+
+        assert!(matches!(content, LuaValue::Nil));
+        assert!(err.is_some());
+    }
+}

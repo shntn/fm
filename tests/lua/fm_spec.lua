@@ -34,22 +34,49 @@ local function make_fs()
         table.insert(fs.calls, cmd)
         return fs.exit_code
     end
+    -- 既定では設定ファイルが存在しないものとして扱い、config.luaの既定値にフォールバックさせる
+    fs.read_file = function() return nil, "not found" end
     return fs
+end
+
+-- toml.parseはRust側が提供する関数のため、busted実行環境には実体がない。
+-- テストで使う簡単な[section]\nkey = "value"形式だけを解釈するモックに差し替える
+local function make_toml()
+    return {
+        parse = function(text)
+            local result = {}
+            local section = result
+            for line in text:gmatch("[^\n]+") do
+                local sec = line:match("^%[(%a+)%]$")
+                if sec then
+                    result[sec] = result[sec] or {}
+                    section = result[sec]
+                else
+                    local key, value = line:match('^(%S+)%s*=%s*"(.-)"$')
+                    if key then
+                        section[key] = value
+                    end
+                end
+            end
+            return result
+        end,
+    }
 end
 
 describe("fm", function()
     before_each(function()
         _G.fs = make_fs()
+        _G.toml = make_toml()
         _G.screen = make_screen(80, 10)
         dofile("lua/fm.lua")
     end)
 
     after_each(function()
         _G.fs = nil
+        _G.toml = nil
         _G.screen = nil
         _G.on_init = nil
         _G.on_key = nil
-        _G.OPENERS = nil
     end)
 
     it("on_initを呼ぶと画面がクリアされる", function()
@@ -184,7 +211,7 @@ describe("fm", function()
     end)
 
     it("拡張子に対応するコマンドが定義されている場合はそちらを実行する", function()
-        _G.OPENERS = { txt = "myviewer $P/$C" }
+        _G.fs.read_file = function() return '[associations]\ntxt = "myviewer $P/$C"' end
         dofile("lua/fm.lua")
         on_init()
         on_key("j") -- カーソルを"sub"に合わせる
@@ -194,7 +221,7 @@ describe("fm", function()
     end)
 
     it("$Xは拡張子を除いたファイル名に展開される", function()
-        _G.OPENERS = { txt = "viewer $X" }
+        _G.fs.read_file = function() return '[associations]\ntxt = "viewer $X"' end
         dofile("lua/fm.lua")
         on_init()
         on_key("j") -- カーソルを"sub"に合わせる
@@ -204,7 +231,7 @@ describe("fm", function()
     end)
 
     it("拡張子に対応するコマンドがない場合はデフォルト動作(less/xxd)にフォールバックする", function()
-        _G.OPENERS = { md = "glow $C" }
+        _G.fs.read_file = function() return '[associations]\nmd = "glow $C"' end
         dofile("lua/fm.lua")
         on_init()
         on_key("j") -- カーソルを"sub"に合わせる
@@ -214,7 +241,7 @@ describe("fm", function()
     end)
 
     it("ドットファイル（拡張子なし）は拡張子コマンドの対象にならない", function()
-        _G.OPENERS = { gitignore = "should-not-run $C" }
+        _G.fs.read_file = function() return '[associations]\ngitignore = "should-not-run $C"' end
         _G.fs.list = function()
             return { { name = ".gitignore", is_dir = false, size = 5, modified = "", perm = "rw-r--r--" } }
         end

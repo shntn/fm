@@ -2,6 +2,7 @@ use mlua::prelude::*;
 use std::path::Path;
 use crate::screen;
 use crate::filesystem;
+use crate::toml_bridge;
 
 pub struct LuaBridge {
     lua: Lua,
@@ -12,6 +13,7 @@ impl LuaBridge {
         let lua = Lua::new();
         screen::register(&lua)?;
         filesystem::register(&lua)?;
+        toml_bridge::register(&lua)?;
         Ok(LuaBridge { lua })
     }
 

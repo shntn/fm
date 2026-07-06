@@ -4,6 +4,7 @@ local template = require("template")
 -- 日本語などのマルチバイト文字や、macOSがNFD正規化する濁点付き仮名で幅がずれる
 local utf8width = require("utf8width")
 local view = require("view")
+local config = require("config")
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 -- 状態
@@ -215,13 +216,8 @@ local function go_to_parent()
 end
 
 -- 拡張子ごとに開くコマンドを定義する。$C=拡張子ありファイル名、$X=拡張子なしファイル名、$P=カレントディレクトリのフルパス
--- 将来的にコンフィグファイルから読み込む想定で、事前にグローバルのOPENERSが定義されていればそれを使う
-local OPENERS = _G.OPENERS or {
-    zip = "unzip -l $P/$C | less",
-    tar = "tar tvf $P/$C | less",
-    gz = "tar tzvf $P/$C | less",
-    md = "glow -p $P/$C",
-}
+-- config.load()が返す設定ファイル(またはその既定値)のassociationsセクションから読み込む
+local ASSOCIATIONS = config.load().associations
 
 -- シェルコマンドの引数として安全な形にpathをクォートする
 -- fs.run()に渡す文字列にファイル名を組み込む際は、必ずこれを経由すること
@@ -271,7 +267,7 @@ local function open_selected()
         return
     end
     if not f.is_dir then
-        local cmd_template = OPENERS[file_extension(f.name)]
+        local cmd_template = ASSOCIATIONS[file_extension(f.name)]
         if cmd_template then
             open_with_command(cmd_template, f)
         else

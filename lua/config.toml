@@ -1,0 +1,19 @@
+# fm の設定ファイル
+#
+# 優先順位
+# 1. "$FM_CONFIG"
+# 2. "~/.config/fm/config.toml"
+
+[associations]
+# フォーマット:
+# 拡張子 = "登録コマンド"
+#
+# 登録コマンドのパラメータで使用可能なマクロ:
+# $C: カーソル位置のファイル名（拡張子あり）
+# $X: カーソル位置のファイル名（拡張子なし）
+# $P: カレントディレクトリのフルパス
+#
+zip = "unzip -l $P/$C | less"
+tar = "tar tvf $P/$C | less"
+gz = "tar tzvf $P/$C | less"
+md = "glow -p $P/$C"
