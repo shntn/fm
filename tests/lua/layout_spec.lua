@@ -130,6 +130,23 @@ describe("layout.expand", function()
         end)
     end)
 
+    describe("layout.tag_width", function()
+        it("指定したキーのタグの幅(#の個数)を返す", function()
+            local width = layout.tag_width(" #name#####", "name")
+            assert.equals(10, width)
+        end)
+
+        it("複数行のテンプレートからも見つけられる", function()
+            local width = layout.tag_width(" header\n@#id##\n footer", "id")
+            assert.equals(5, width)
+        end)
+
+        it("該当するキーのタグが存在しない場合はnilを返す", function()
+            local width = layout.tag_width(" #name#####", "missing")
+            assert.is_nil(width)
+        end)
+    end)
+
     describe("出力配列の構造", function()
         it("要素数が画面高さと一致する", function()
             local tmpl = " header\n@#id##\n footer"

@@ -173,6 +173,18 @@ local function render_line(segments, columns, tag_stats, width, flex_tag_count, 
     return table.concat(parts)
 end
 
+-- tmpl内でキーkeyのタグの幅(#の個数)を返す。見つからない場合はnil
+function layout.tag_width(tmpl, key)
+    for _, line in ipairs(parse_lines(tmpl)) do
+        for _, seg in ipairs(line.segments) do
+            if seg.type == "tag" and seg.key == key then
+                return seg.width
+            end
+        end
+    end
+    return nil
+end
+
 function layout.expand(tmpl, columns, width, height)
     local lines_data = parse_lines(tmpl)
 
