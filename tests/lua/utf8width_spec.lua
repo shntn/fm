@@ -64,3 +64,31 @@ describe("utf8width.truncate", function()
         assert.equals("あいうえ…", utf8width.truncate("あいうえおかきくけこ", 10))
     end)
 end)
+
+describe("utf8width.cut_end", function()
+    it("表示幅内に収まる文字列はそのまま返す", function()
+        assert.equals("abc", utf8width.cut_end("abc", 5))
+    end)
+
+    it("表示幅を超える文字列は省略記号を付けずに末尾を削る", function()
+        assert.equals("abcde", utf8width.cut_end("abcdefghij", 5))
+    end)
+
+    it("全角文字を含む文字列も表示幅を基準に末尾を削る", function()
+        assert.equals("あいうえお", utf8width.cut_end("あいうえおかきくけこ", 10))
+    end)
+end)
+
+describe("utf8width.cut_start", function()
+    it("表示幅内に収まる文字列はそのまま返す", function()
+        assert.equals("abc", utf8width.cut_start("abc", 5))
+    end)
+
+    it("表示幅を超える文字列は省略記号を付けずに先頭を削る", function()
+        assert.equals("fghij", utf8width.cut_start("abcdefghij", 5))
+    end)
+
+    it("全角文字を含む文字列も表示幅を基準に先頭を削る", function()
+        assert.equals("かきくけこ", utf8width.cut_start("あいうえおかきくけこ", 10))
+    end)
+end)

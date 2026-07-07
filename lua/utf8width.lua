@@ -91,7 +91,7 @@ end
 local ELLIPSIS = "…"
 
 -- strの末尾を1コードポイントずつ削り、表示幅がbudget以下になるまで縮める
-local function shrink_to_width(str, budget)
+local function shrink_from_end(str, budget)
     local result = str
     while utf8width.width(result) > budget do
         local last = utf8.offset(result, -1)
@@ -99,6 +99,19 @@ local function shrink_to_width(str, budget)
             return ""
         end
         result = result:sub(1, last - 1)
+    end
+    return result
+end
+
+-- strの先頭を1コードポイントずつ削り、表示幅がbudget以下になるまで縮める
+local function shrink_from_start(str, budget)
+    local result = str
+    while utf8width.width(result) > budget do
+        local next_start = utf8.offset(result, 2)
+        if not next_start then
+            return ""
+        end
+        result = result:sub(next_start)
     end
     return result
 end
@@ -111,12 +124,38 @@ function utf8width.truncate(str, max_width)
     end
     local ok, result = pcall(function()
         local budget = math.max(max_width - utf8width.width(ELLIPSIS), 0)
-        return shrink_to_width(str, budget) .. ELLIPSIS
+        return shrink_from_end(str, budget) .. ELLIPSIS
     end)
     if ok then
         return result
     end
     return str:sub(1, max_width)
+end
+
+-- strの表示幅がmax_widthを超える場合、末尾を削って切り詰める(省略記号なし)
+-- 不正なUTF-8の場合はバイト単位で切り詰める
+function utf8width.cut_end(str, max_width)
+    if utf8width.width(str) <= max_width then
+        return str
+    end
+    local ok, result = pcall(shrink_from_end, str, max_width)
+    if ok then
+        return result
+    end
+    return str:sub(1, max_width)
+end
+
+-- strの表示幅がmax_widthを超える場合、先頭を削って切り詰める(省略記号なし)
+-- 不正なUTF-8の場合はバイト単位で切り詰める
+function utf8width.cut_start(str, max_width)
+    if utf8width.width(str) <= max_width then
+        return str
+    end
+    local ok, result = pcall(shrink_from_start, str, max_width)
+    if ok then
+        return result
+    end
+    return str:sub(-max_width)
 end
 
 return utf8width

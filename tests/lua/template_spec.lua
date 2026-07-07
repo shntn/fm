@@ -27,9 +27,14 @@ describe("template.render", function()
         assert.equals("abc       ", result)
     end)
 
-    it("値が幅を超える場合はそのまま展開する", function()
+    it("左詰めで値が幅を超える場合は末尾を切り詰める", function()
         local result = template.render("{name:5}", { name = "abcdefgh" })
-        assert.equals("abcdefgh", result)
+        assert.equals("abcde", result)
+    end)
+
+    it("右詰めで値が幅を超える場合は先頭を切り詰める", function()
+        local result = template.render("{size:5:right}", { size = "abcdefgh" })
+        assert.equals("defgh", result)
     end)
 
     it("全角文字を含む値は表示幅を基準にパディングする", function()
@@ -37,9 +42,9 @@ describe("template.render", function()
         assert.equals("あい  ", result)
     end)
 
-    it("全角文字を含む値が幅を超える場合はそのまま展開する", function()
+    it("全角文字を含む値が幅を超える場合は表示幅を基準に末尾を切り詰める", function()
         local result = template.render("{name:5}", { name = "漢字漢字" })
-        assert.equals("漢字漢字", result)
+        assert.equals("漢字", result)
     end)
 
     it("角括弧とドットを含むキー（layout.expandの出力形式）を展開できる", function()

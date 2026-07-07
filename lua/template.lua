@@ -4,8 +4,14 @@ local template = {}
 
 local function pad(value, width, align)
     local len = utf8width.width(value)
-    if len >= width then
+    if len == width then
         return value
+    end
+    if len > width then
+        if align == "right" then
+            return utf8width.cut_start(value, width)
+        end
+        return utf8width.cut_end(value, width)
     end
     local spaces = string.rep(" ", width - len)
     if align == "right" then
