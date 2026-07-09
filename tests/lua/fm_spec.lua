@@ -252,6 +252,52 @@ describe("fm", function()
         assert.is_nil(fs.calls[#fs.calls]:find("should-not-run", 1, true))
     end)
 
+    it("隠しファイルは初期状態で表示される", function()
+        _G.fs.list = function()
+            return { { name = ".gitignore", is_dir = false, size = 5, modified = "", perm = "rw-r--r--" } }
+        end
+        on_init()
+        assert.is_not_nil(screen.writes[2]:find(".gitignore", 1, true))
+    end)
+
+    it("'.'キーを押すと隠しファイルが表示されなくなる", function()
+        _G.fs.list = function()
+            return {
+                { name = ".gitignore", is_dir = false, size = 5, modified = "", perm = "rw-r--r--" },
+                { name = "a.txt", is_dir = false, size = 5, modified = "", perm = "rw-r--r--" },
+            }
+        end
+        on_init()
+        on_key(".")
+        assert.is_nil(screen.writes[2]:find(".gitignore", 1, true))
+    end)
+
+    it("'.'キーを2回押すと隠しファイルの表示が元に戻る", function()
+        _G.fs.list = function()
+            return { { name = ".gitignore", is_dir = false, size = 5, modified = "", perm = "rw-r--r--" } }
+        end
+        on_init()
+        on_key(".")
+        on_key(".")
+        assert.is_not_nil(screen.writes[2]:find(".gitignore", 1, true))
+    end)
+
+    it("'.'キーを押しても'..'は表示され続ける", function()
+        on_init()
+        on_key(".")
+        assert.is_not_nil(screen.writes[1]:find("../", 1, true))
+    end)
+
+    it("隠しファイルにカーソルがある状態で非表示にすると、カーソルが範囲内に補正される", function()
+        _G.fs.list = function()
+            return { { name = ".gitignore", is_dir = false, size = 5, modified = "", perm = "rw-r--r--" } }
+        end
+        on_init()
+        on_key("j") -- カーソルを".gitignore"に合わせる
+        on_key(".") -- 隠しファイルを非表示にする(".."だけが残る)
+        assert.is_not_nil(screen.writes[1]:find("\27[7m", 1, true))
+    end)
+
     it("ファイル名が列幅を超える場合、拡張子を残して省略記号で切り詰める", function()
         _G.fs.list = function()
             return {

@@ -92,7 +92,8 @@ function ListScreen:view(data) -- luacheck: ignore
         end
     end
 
-    screen.write(0, data.display.height - 1, "j/down:↓  k/up:↑  enter:開く  backspace:親へ  q:終了")
+    screen.write(0, data.display.height - 1,
+        "j/down:↓  k/up:↑  enter:開く  backspace:親へ  .:隠しファイル  q:終了")
 end
 
 function ListScreen:command_mapper(key) -- luacheck: ignore
@@ -104,6 +105,8 @@ function ListScreen:command_mapper(key) -- luacheck: ignore
         return "open_selected"
     elseif key == "backspace" then
         return "go_to_parent"
+    elseif key == "." then
+        return "toggle_hidden"
     elseif key == "q" or key == "escape" then
         return "quit"
     end

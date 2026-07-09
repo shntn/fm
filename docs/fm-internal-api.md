@@ -18,7 +18,7 @@
 local state = {
     display = { width = 0, height = 0 },
     panes = {
-        { cwd = "...", cursor = 1, files = {} },
+        { cwd = "...", cursor = 1, show_hidden = true, all_files = {}, files = {} },
     },
     active_pane = 1,
     message = "",
@@ -31,9 +31,15 @@ local state = {
 | `state.panes` | table | ペインごとの状態の配列。現状は単一ペインのみ対応のため要素は常に1つ |
 | `state.panes[N].cwd` | string | そのペインのカレントディレクトリの絶対パス |
 | `state.panes[N].cursor` | number | カーソル位置（`files`の1始まりインデックス） |
-| `state.panes[N].files` | table | `{name, is_dir, size, modified, perm}` の配列。`fs.list`の戻り値の先頭に`..`エントリを加えたもの |
+| `state.panes[N].show_hidden` | boolean | 隠しファイル（`.`始まりの名前。`..`自体は対象外）を表示するか。既定は`true` |
+| `state.panes[N].all_files` | table | `fs.list`の戻り値の先頭に`..`エントリを加えた、フィルタ適用前の生の一覧 |
+| `state.panes[N].files` | table | `all_files`に`show_hidden`のフィルタを適用した一覧。`ListScreen:view`とカーソル移動系コマンドはこちらを見る |
 | `state.active_pane` | number | 操作対象のペイン（`state.panes`のインデックス） |
 | `state.message` | string | 未使用（将来のエラー・通知表示用に予約） |
+
+`refresh_files(pane)`（`fm.lua`内部関数）が`pane.all_files`から`pane.files`を
+再構築する。`pane.cursor`が新しい`pane.files`の範囲外になった場合は末尾に補正する。
+ディレクトリ読み込み時・`toggle_hidden`実行時に呼ばれる。
 
 `current_pane()`（`fm.lua`内部関数）が`state.panes[state.active_pane]`を返す。
 ナビゲーション層・コマンド定義層はこれを経由して状態を読み書きする。
@@ -54,7 +60,7 @@ local state = {
 
 - 引数: `key`（キー名）
 - 戻り値: `command_name`（実行すべきコマンド名の文字列。対応するキーがなければ`nil`）, `args`（今は常に`nil`）
-- キー対応: `j`/`down` → `"cursor_down"`, `k`/`up` → `"cursor_up"`, `enter` → `"open_selected"`, `backspace` → `"go_to_parent"`, `q`/`escape` → `"quit"`
+- キー対応: `j`/`down` → `"cursor_down"`, `k`/`up` → `"cursor_up"`, `enter` → `"open_selected"`, `backspace` → `"go_to_parent"`, `.` → `"toggle_hidden"`, `q`/`escape` → `"quit"`
 
 `"quit"`は`Invoker`を経由せず、`fm.lua`の`on_key`が直接検知して`false`を返す
 特別なコマンド名（メインループを終了させるため）。
@@ -70,6 +76,7 @@ local state = {
 | `cursor_up` | `cursor`を1つ戻す（先頭では何もしない） |
 | `go_to_parent` | 親ディレクトリへ移動する。戻る前にいたディレクトリの位置にカーソルを合わせる |
 | `open_selected` | カーソル位置がディレクトリなら、そこに移動する（`..`の場合は`go_to_parent`相当）。ファイルなら、拡張子に対応するコマンド（`ASSOCIATIONS`）が定義されていればそれを、なければ`open_file`でファイルを開く |
+| `toggle_hidden` | `show_hidden`を反転し、`refresh_files`で`files`を再構築する |
 
 ### `open_file(cwd, f)` (内部関数)
 

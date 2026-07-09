@@ -163,6 +163,11 @@ describe("ListScreen:command_mapper", function()
         assert.equals("go_to_parent", view:command_mapper("backspace"))
     end)
 
+    it("'.'はtoggle_hiddenを返す", function()
+        local view = ListScreen.new()
+        assert.equals("toggle_hidden", view:command_mapper("."))
+    end)
+
     it("q/escapeはquitを返す", function()
         local view = ListScreen.new()
         assert.equals("quit", view:command_mapper("q"))

@@ -12,7 +12,9 @@ local config = require("config")
 local state = {
     display = { width = 0, height = 0 },
     panes = {
-        { cwd = fs.cwd(), cursor = 1, files = {} },
+        -- all_files: fs.list()の結果に".."を加えた生の一覧
+        -- files: all_filesにshow_hiddenのフィルタを適用した、実際に表示・操作する一覧
+        { cwd = fs.cwd(), cursor = 1, show_hidden = true, all_files = {}, files = {} },
     },
     active_pane = 1,
     message = "",
@@ -43,6 +45,29 @@ local function load_dir(path)
     -- 先頭に .. を追加
     table.insert(list, 1, { name = "..", is_dir = true, size = 0, modified = "", perm = "rwxr-xr-x" })
     return list
+end
+
+-- all_filesに、show_hiddenに応じた隠しファイルの絞り込みを適用したものを返す
+-- ".."は隠しファイル扱いにせず、show_hiddenの値によらず常に含める
+local function apply_hidden_filter(all_files, show_hidden)
+    if show_hidden then
+        return all_files
+    end
+    local filtered = {}
+    for _, f in ipairs(all_files) do
+        if f.name == ".." or not f.name:match("^%.") then
+            table.insert(filtered, f)
+        end
+    end
+    return filtered
+end
+
+-- ペインのall_filesからfilesを再構築し、カーソルが範囲外になっていれば補正する
+local function refresh_files(pane)
+    pane.files = apply_hidden_filter(pane.all_files, pane.show_hidden)
+    if pane.cursor > #pane.files then
+        pane.cursor = math.max(#pane.files, 1)
+    end
 end
 
 -- リストの中からnameと一致する要素のインデックスを探す
@@ -85,7 +110,8 @@ local function enter_directory(newdir, cursor_name)
     end
     local pane = current_pane()
     pane.cwd = newdir
-    pane.files = list
+    pane.all_files = list
+    refresh_files(pane)
     pane.cursor = (cursor_name and find_index_by_name(pane.files, cursor_name)) or 1
 end
 
@@ -178,6 +204,12 @@ Invoker.commands.go_to_parent = function()
     go_to_parent()
 end
 
+Invoker.commands.toggle_hidden = function()
+    local pane = current_pane()
+    pane.show_hidden = not pane.show_hidden
+    refresh_files(pane)
+end
+
 -- カーソル位置の要素を開く
 Invoker.commands.open_selected = function()
     local pane = current_pane()
@@ -221,7 +253,8 @@ function on_init()
         screen.write(0, 0, "error: " .. err)
         return
     end
-    pane.files = list
+    pane.all_files = list
+    refresh_files(pane)
     draw()
 end
 
