@@ -2,6 +2,7 @@ local Invoker = require("invoker")
 local ListScreen = require("list_screen")
 local GridScreen = require("grid_screen")
 local ConfirmDeleteScreen = require("confirm_delete_screen")
+local Commands = require("commands")
 local config = require("config")
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
@@ -208,97 +209,24 @@ end
 -- コマンド定義
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 
-Invoker.commands.cursor_down = function()
-    local pane = current_pane()
-    if pane.cursor < #pane.files then
-        pane.cursor = pane.cursor + 1
-    end
-end
-
-Invoker.commands.cursor_up = function()
-    local pane = current_pane()
-    if pane.cursor > 1 then
-        pane.cursor = pane.cursor - 1
-    end
-end
-
-Invoker.commands.go_to_parent = function()
-    go_to_parent()
-end
-
-Invoker.commands.toggle_hidden = function()
-    local pane = current_pane()
-    pane.show_hidden = not pane.show_hidden
-    refresh_files(pane)
-end
-
--- カーソル位置の要素の削除を確認するスクリーンに切り替える（".."は対象外）
--- 呼び出し元のスクリーン(一覧/2段組)を渡し、下敷きの描画とy/n後の復帰先に使う
-Invoker.commands.confirm_delete = function()
-    local pane = current_pane()
-    local f = pane.files[pane.cursor]
-    if not f or f.name == ".." then
-        return
-    end
-    set_current_screen(ConfirmDeleteScreen.new(f, get_current_screen()))
-end
-
--- 確認ダイアログで"y"が押されたときに呼ばれる。実際の削除を実行する
-Invoker.commands.delete = function(args)
-    local pane = current_pane()
-    local target = args.target
-    local quoted = shell_quote(join_path(pane.cwd, target.name))
-    local cmd = target.is_dir and ("rm -r " .. quoted) or ("rm " .. quoted)
-    if fs.run(cmd) == 0 then
-        state.message = ""
-        enter_directory(pane.cwd, nil)
-    else
-        state.message = '"' .. target.name .. '" の削除に失敗しました'
-    end
-    set_current_screen(args.previous_screen)
-end
-
--- 確認ダイアログで"n"/escapeが押されたときに呼ばれる。何もせず呼び出し元のスクリーンへ戻る
-Invoker.commands.cancel = function(args)
-    set_current_screen(args.previous_screen)
-end
-
--- 検索文字列が確定した後に呼ばれる。ファイル一覧を絞り込む
-Invoker.commands.search = function(args)
-    local pane = current_pane()
-    pane.search_query = args.query or ""
-    refresh_files(pane)
-end
-
--- 一覧表示(1列)と2段組表示を切り替える
-Invoker.commands.toggle_layout = function()
-    if get_current_screen() == list_screen then
-        set_current_screen(grid_screen)
-    else
-        set_current_screen(list_screen)
-    end
-end
-
--- カーソル位置の要素を開く
-Invoker.commands.open_selected = function()
-    local pane = current_pane()
-    local f = pane.files[pane.cursor]
-    if not f then
-        return
-    end
-    if not f.is_dir then
-        local cmd_template = ASSOCIATIONS[file_extension(f.name)]
-        if cmd_template then
-            open_with_command(cmd_template, pane.cwd, f)
-        else
-            open_file(pane.cwd, f)
-        end
-    elseif f.name == ".." then
-        go_to_parent()
-    else
-        enter_directory(join_path(pane.cwd, f.name), nil)
-    end
-end
+Commands.register({
+    state = state,
+    current_pane = current_pane,
+    refresh_files = refresh_files,
+    enter_directory = enter_directory,
+    go_to_parent = go_to_parent,
+    join_path = join_path,
+    shell_quote = shell_quote,
+    open_file = open_file,
+    open_with_command = open_with_command,
+    file_extension = file_extension,
+    ASSOCIATIONS = ASSOCIATIONS,
+    get_current_screen = get_current_screen,
+    set_current_screen = set_current_screen,
+    list_screen = list_screen,
+    grid_screen = grid_screen,
+    ConfirmDeleteScreen = ConfirmDeleteScreen,
+})
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 -- コールバック

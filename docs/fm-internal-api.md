@@ -1,8 +1,9 @@
 # fm.lua 内部API
 
-`lua/fm.lua` は「状態」「ディレクトリナビゲーション」「コマンド定義」「コールバック」の
+`lua/fm.lua` は「状態」「ディレクトリナビゲーション」「コマンド登録」「コールバック」の
 4つの塊に分かれている。画面描画そのものは`lua/list_screen.lua`（`ListScreen`）に、
-コマンドの実行入口は`lua/invoker.lua`（`Invoker`）に分離されている。
+コマンドの実行入口は`lua/invoker.lua`（`Invoker`）に、コマンドの実装本体は
+`lua/commands.lua`（`Commands`）に分離されている。
 このドキュメントは、これらの境界を跨ぐ最小限の契約を定義する。
 各塊の内部だけで完結する関数（`find_index_by_name`, `join_path` など）は対象外。
 
@@ -116,10 +117,34 @@ local state = {
 - キー対応: `y` → `"delete"`（`args = { target = target, previous_screen = previous_screen }`）,
   `n`/`escape` → `"cancel"`（`args = { previous_screen = previous_screen }`）
 
-## コマンド定義（`Invoker.commands`）
+## コマンド登録（`lua/commands.lua`）
 
-`lua/invoker.lua`が提供する`Invoker.commands`（コマンド名→実行関数のテーブル）に、
-`fm.lua`が以下を登録する。いずれも引数を取らず、`state`を直接書き換える。
+コマンドの実装本体は`lua/commands.lua`の`Commands`モジュールに分離されている。
+`fm.lua`は状態・ナビゲーション関数・スクリーンインスタンスなどをまとめた`ctx`
+テーブルを組み立て、`Commands.register(ctx)`を1回呼ぶことで、`lua/invoker.lua`が
+提供する`Invoker.commands`（コマンド名→実行関数のテーブル）にすべて登録される。
+
+`commands.lua`は`fm.lua`のローカル変数に直接アクセスできない（別ファイルのため）
+ので、必要な依存はすべて`ctx`引数で受け取る。`ctx`の内容は以下の通り。
+
+| キー | 内容 |
+|---|---|
+| `state` | 状態テーブル（`state.message`の書き換えに使う） |
+| `current_pane` | 操作対象のペインを返す関数 |
+| `refresh_files` | `pane.all_files`から`pane.files`を再構築する関数 |
+| `enter_directory` | ディレクトリ移動関数 |
+| `go_to_parent` | 親ディレクトリへ移動する関数 |
+| `join_path` | パス結合関数 |
+| `shell_quote` | シェルクォート関数 |
+| `open_file` | デフォルトのファイルを開く関数 |
+| `open_with_command` | 拡張子対応コマンドでファイルを開く関数 |
+| `file_extension` | 拡張子取得関数 |
+| `ASSOCIATIONS` | 拡張子ごとのコマンド定義 |
+| `get_current_screen` / `set_current_screen` | アクティブなスクリーンの参照・切り替え関数 |
+| `list_screen` / `grid_screen` | `ListScreen`/`GridScreen`のインスタンス |
+| `ConfirmDeleteScreen` | `ConfirmDeleteScreen`モジュール |
+
+登録されるコマンドは以下の通り。いずれも`state`（`ctx`経由）を直接書き換える。
 
 | コマンド名 | 動作 |
 |---|---|
