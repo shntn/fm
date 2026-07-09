@@ -176,7 +176,7 @@ function Commands.register(ctx)
         local cmd = target.is_dir and ("rm -r " .. quoted) or ("rm " .. quoted)
         if fs.run(cmd) == 0 then
             state.message = ""
-            enter_directory(state, pane.cwd, nil)
+            pane.needs_reload = true
         else
             state.message = '"' .. target.name .. '" の削除に失敗しました'
         end

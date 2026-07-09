@@ -17,7 +17,12 @@ local app_state = {
     panes = {
         -- all_files: fs.list()の結果に".."を加えた生の一覧
         -- files: all_filesにshow_hidden・search_queryのフィルタを適用した、実際に表示・操作する一覧
-        { cwd = fs.cwd(), cursor = 1, show_hidden = true, search_query = "", all_files = {}, files = {} },
+        -- needs_reload: trueならdraw()のデータ準備でall_filesを再読み込みする
+        --   （削除コマンドなど、コマンド実行の副作用でディレクトリの中身が変わった場合に立てる）
+        {
+            cwd = fs.cwd(), cursor = 1, show_hidden = true, search_query = "",
+            all_files = {}, files = {}, needs_reload = false,
+        },
     },
     active_pane = 1,
     message = "",
@@ -92,6 +97,27 @@ local function refresh_files(pane)
     end
 end
 
+-- pane.needs_reloadが立っていれば、cwdをディスクから再読み込みしfilesを再構築する
+-- （コマンド実行そのものではなく、view呼び出し直前の「データ準備」で行う）
+local function reload_if_needed(pane)
+    if not pane.needs_reload then
+        return
+    end
+    local list, err = load_dir(pane.cwd)
+    if err then
+        return
+    end
+    pane.all_files = list
+    pane.needs_reload = false
+    refresh_files(pane)
+end
+
+-- データ準備: view呼び出し前に、コマンド実行結果を反映した表示用データを整える
+-- （現状はneeds_reloadに応じた再読み込みのみだが、今後ここに追加していく）
+local function prepare_data(state)
+    reload_if_needed(current_pane(state))
+end
+
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 -- コマンド定義
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
@@ -116,6 +142,7 @@ local function draw(state)
     local width, height = screen.get_size()
     state.display.width = width
     state.display.height = height
+    prepare_data(state)
     screen.clear()
     get_current_screen():view(state)
 end

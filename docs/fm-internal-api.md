@@ -42,6 +42,7 @@ local app_state = {
 | `state.panes[N].search_query` | string | 検索文字列。空文字なら絞り込みなし。ディレクトリ移動時に空文字へリセットされる |
 | `state.panes[N].all_files` | table | `fs.list`の戻り値の先頭に`..`エントリを加えた、フィルタ適用前の生の一覧 |
 | `state.panes[N].files` | table | `all_files`に`show_hidden`・`search_query`のフィルタを適用した一覧。`ListScreen:view`とカーソル移動系コマンドはこちらを見る |
+| `state.panes[N].needs_reload` | boolean | `true`なら`draw()`のデータ準備で`all_files`をディスクから再読み込みする。既定は`false` |
 | `state.active_pane` | number | 操作対象のペイン（`state.panes`のインデックス） |
 | `state.message` | string | エラー・通知メッセージ。空文字でなければ`ListScreen:view`がフッター行に通常のヘルプの代わりに表示する |
 
@@ -50,6 +51,15 @@ local app_state = {
 対象にもならず常に含まれる）。`pane.cursor`が新しい`pane.files`の範囲外になった
 場合は末尾に補正する。ディレクトリ読み込み時・`toggle_hidden`実行時・検索確定時に
 呼ばれる。すでに`pane`（`state.panes[N]`）を受け取っているので`state`自体は不要。
+
+`reload_if_needed(pane)`（`fm.lua`内部関数）が`pane.needs_reload`を見て、`true`
+なら`load_dir(pane.cwd)`で`pane.all_files`をディスクから再読み込みし、
+`refresh_files(pane)`を呼んでから`pane.needs_reload`を`false`に戻す。`draw()`から
+呼ばれる「データ準備」の一部（`docs/fm-interface-design.md`の「データ準備」を参照）。
+`delete`コマンドのように、コマンド自体はディスクを変更するだけで`needs_reload`を
+立てるにとどめ、実際の再読み込みは次の`draw()`まで遅延させる（`enter_directory`の
+ような、コマンド自身が新しいディレクトリのデータを直接必要とするナビゲーション系
+とは扱いが異なる。詳細は「コマンド登録」を参照）。
 
 `current_pane(state)`（`fm.lua`内部関数）が`state.panes[state.active_pane]`を返す。
 ナビゲーション層・コマンド定義層は、呼び出し時に`state`を渡してこれを経由して
@@ -166,10 +176,10 @@ local app_state = {
 | `cursor_down` | `cursor`を1つ進める（末尾では何もしない） |
 | `cursor_up` | `cursor`を1つ戻す（先頭では何もしない） |
 | `go_to_parent` | 親ディレクトリへ移動する。戻る前にいたディレクトリの位置にカーソルを合わせる |
-| `open_selected` | カーソル位置がディレクトリなら、そこに移動する（`..`の場合は`go_to_parent`相当）。ファイルなら、拡張子に対応するコマンド（`ASSOCIATIONS`）が定義されていればそれを、なければ`open_file`でファイルを開く |
+| `open_selected` | カーソル位置がディレクトリなら、そこに移動する（`..`の場合は`go_to_parent`相当）。ファイルなら、拡張子に対応するコマンド（`associations`）が定義されていればそれを、なければ`open_file`でファイルを開く |
 | `toggle_hidden` | `show_hidden`を反転し、`refresh_files`で`files`を再構築する |
 | `confirm_delete` | カーソル位置の要素（`".."`は対象外）について、現在のスクリーンを`previous_screen`として渡し`ConfirmDeleteScreen`へ切り替える |
-| `delete` | `args.target`を`fs.run("rm ...")`（ディレクトリは`rm -r`）で削除する。成功時は`state.message`を空にしてディレクトリを再読み込みし、失敗時はエラーメッセージを`state.message`にセットする。いずれの場合も`args.previous_screen`へ戻す |
+| `delete` | `args.target`を`fs.run("rm ...")`（ディレクトリは`rm -r`）で削除する。成功時は`state.message`を空にして`pane.needs_reload`を`true`にする（実際の再読み込みは次の`draw()`のデータ準備で行われる）。失敗時はエラーメッセージを`state.message`にセットする。いずれの場合も`args.previous_screen`へ戻す |
 | `cancel` | 何もせず`args.previous_screen`へ戻す |
 | `toggle_layout` | `ListScreen`と`GridScreen`を切り替える |
 | `search` | `args.query`を`pane.search_query`にセットし、`refresh_files`で`files`を再構築する |
@@ -213,8 +223,19 @@ Rust側（`lua_bridge.rs`）が呼び出す唯一の入口。`fm-interface-desig
 
 - 引数: `state`（`app_state`）
 - 戻り値: なし
-- 動作: `screen.get_size()`で`state.display`を更新し、`screen.clear()`した上で`get_current_screen():view(state)`を呼ぶ
+- 動作: `screen.get_size()`で`state.display`を更新し、`prepare_data(state)`で
+  データ準備（`docs/fm-interface-design.md`の「データ準備」を参照）を行った上で、
+  `screen.clear()`した上で`get_current_screen():view(state)`を呼ぶ
 - 呼び出し元: `on_init`, `on_key`（いずれも`app_state`を渡す）
+
+### `prepare_data(state)`
+
+- 引数: `state`（`app_state`）
+- 戻り値: なし
+- 動作: `view`呼び出し前に必要な、表示用データの整形をまとめる関数。現状は
+  `reload_if_needed(current_pane(state))`（`needs_reload`に応じた再読み込み）
+  のみを行うが、今後この種の処理が増えた場合はここに追加していく
+- 呼び出し元: `draw`
 
 ### `on_key(key)`
 
