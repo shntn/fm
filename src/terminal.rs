@@ -83,11 +83,6 @@ pub fn read_key() -> Option<String> {
     loop {
         let ev = event::read().ok()?;
         if let Event::Key(KeyEvent { code, modifiers, .. }) = ev {
-            // Ctrl+C は強制終了
-            if code == KeyCode::Char('c') && modifiers.contains(KeyModifiers::CONTROL) {
-                std::process::exit(0);
-            }
-
             // テーブル駆動変換
             for (kc, name) in KEY_TABLE {
                 if code == *kc {

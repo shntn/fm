@@ -14,13 +14,19 @@ fn main() {
 
     let _guard = RawModeGuard::new().expect("rawモードに入れませんでした");
 
+    // _guard生成後のエラーはstd::process::exitを使わないこと。
+    // Dropが実行されず、ターミナルの状態(rawモード・代替画面バッファ)が復元されないまま終了してしまう
     bridge.call_on_init().unwrap_or_else(|e| {
-        eprintln!("on_init エラー: {}", e);
-        std::process::exit(1);
+        panic!("on_init エラー: {}", e);
     });
 
     loop {
         if let Some(key) = read_key() {
+            // Ctrl+Cは強制終了。Luaに渡さずここでメインループを抜けることで、
+            // _guardのDropが実行されターミナルの状態が復元される
+            if key == "ctrl-c" {
+                break;
+            }
             match bridge.call_on_key(&key) {
                 Ok(false) => break,
                 Ok(true) => {}
