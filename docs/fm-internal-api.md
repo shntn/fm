@@ -12,11 +12,17 @@
 
 ## 状態
 
-`fm.lua`が保持する`state`テーブル。ナビゲーション層・コマンド定義層が書き込み、
-`ListScreen:view`が読み取る。
+`fm.lua`が保持する`state`テーブル（モジュールローカル変数名は`app_state`）。
+`on_init`/`on_key`はRust側から固定シグネチャで呼ばれるためこの変数を直接参照するが、
+それ以外の関数（`current_pane`・`enter_directory`・`go_to_parent`・`draw`・
+`Invoker.run`経由で呼ばれる`Commands`内の各コマンド）はクロージャで暗黙に
+捕捉せず、必ず引数`state`として明示的に受け取る。「どの関数がどこで状態を
+読み書きするか」を関数シグネチャから追えるようにするための方針
+（C言語のstatic変数のように、ファイル内のどこからでも暗黙に読み書きできる
+状態を避ける）。
 
 ```lua
-local state = {
+local app_state = {
     display = { width = 0, height = 0 },
     panes = {
         { cwd = "...", cursor = 1, show_hidden = true, search_query = "", all_files = {}, files = {} },
@@ -43,10 +49,11 @@ local state = {
 再構築する（`show_hidden`・`search_query`の両方のフィルタを適用。`".."`はどちらの
 対象にもならず常に含まれる）。`pane.cursor`が新しい`pane.files`の範囲外になった
 場合は末尾に補正する。ディレクトリ読み込み時・`toggle_hidden`実行時・検索確定時に
-呼ばれる。
+呼ばれる。すでに`pane`（`state.panes[N]`）を受け取っているので`state`自体は不要。
 
-`current_pane()`（`fm.lua`内部関数）が`state.panes[state.active_pane]`を返す。
-ナビゲーション層・コマンド定義層はこれを経由して状態を読み書きする。
+`current_pane(state)`（`fm.lua`内部関数）が`state.panes[state.active_pane]`を返す。
+ナビゲーション層・コマンド定義層は、呼び出し時に`state`を渡してこれを経由して
+状態を読み書きする。
 
 ## 画面描画・スクリーン管理
 
@@ -120,31 +127,39 @@ local state = {
 ## コマンド登録（`lua/commands.lua`）
 
 コマンドの実装本体は`lua/commands.lua`の`Commands`モジュールに分離されている。
-`fm.lua`は状態・ナビゲーション関数・スクリーンインスタンスなどをまとめた`ctx`
-テーブルを組み立て、`Commands.register(ctx)`を1回呼ぶことで、`lua/invoker.lua`が
-提供する`Invoker.commands`（コマンド名→実行関数のテーブル）にすべて登録される。
+ディレクトリ移動（`enter_directory`/`go_to_parent`）・ファイルを開く処理
+（`open_file`/`open_with_command`とその拡張子判定）・パス操作のヘルパー
+（`join_path`/`parent_dir`/`last_segment`/`find_index_by_name`）・拡張子ごとの
+コマンド定義（`config.load().associations`）は、いずれも`on_init`/`on_key`から
+直接使われることがなく、`Invoker`経由のコマンド実行でしか使われないため、
+`commands.lua`側に閉じている（`fm.lua`には残していない）。
+
+`fm.lua`はスクリーンの読み書きなど、`on_init`とも共有する最小限の依存だけを
+まとめた`ctx`テーブルを組み立て、`Commands.register(ctx)`を1回呼ぶことで、
+`lua/invoker.lua`が提供する`Invoker.commands`（コマンド名→実行関数のテーブル）
+にすべて登録される。
 
 `commands.lua`は`fm.lua`のローカル変数に直接アクセスできない（別ファイルのため）
-ので、必要な依存はすべて`ctx`引数で受け取る。`ctx`の内容は以下の通り。
+ので、必要な依存はすべて`ctx`引数で受け取る。`ctx`は`state`を保持しない。
+`state`はクロージャで捕捉せず、`Invoker.run(command_name, args, state)`経由で
+呼び出しのたびに引数として渡される（`ctx.current_pane`も同様に、`state`を
+引数として明示的に受け取る関数になっている）。`ctx`の内容は以下の通り。
 
 | キー | 内容 |
 |---|---|
-| `state` | 状態テーブル（`state.message`の書き換えに使う） |
-| `current_pane` | 操作対象のペインを返す関数 |
-| `refresh_files` | `pane.all_files`から`pane.files`を再構築する関数 |
-| `enter_directory` | ディレクトリ移動関数 |
-| `go_to_parent` | 親ディレクトリへ移動する関数 |
-| `join_path` | パス結合関数 |
-| `shell_quote` | シェルクォート関数 |
-| `open_file` | デフォルトのファイルを開く関数 |
-| `open_with_command` | 拡張子対応コマンドでファイルを開く関数 |
-| `file_extension` | 拡張子取得関数 |
-| `ASSOCIATIONS` | 拡張子ごとのコマンド定義 |
+| `current_pane` | `(state)`を受け取り、操作対象のペインを返す関数 |
+| `refresh_files` | `(pane)`を受け取り、`pane.all_files`から`pane.files`を再構築する関数 |
+| `load_dir` | `(path)`を受け取り、`list, err`を返す関数。ディレクトリの一覧を読み込む |
 | `get_current_screen` / `set_current_screen` | アクティブなスクリーンの参照・切り替え関数 |
 | `list_screen` / `grid_screen` | `ListScreen`/`GridScreen`のインスタンス |
 | `ConfirmDeleteScreen` | `ConfirmDeleteScreen`モジュール |
 
-登録されるコマンドは以下の通り。いずれも`state`（`ctx`経由）を直接書き換える。
+`enter_directory`/`go_to_parent`は`commands.lua`内で`Commands.register(ctx)`の
+ローカル関数として定義され、`ctx.load_dir`/`ctx.current_pane`/`ctx.refresh_files`
+を使って実装されている（`state`は引数で明示的に受け取る）。
+
+登録されるコマンドはすべて`function(args, state)`のシグネチャを持つ
+（`Invoker.run`が呼び出し時に渡す）。以下は各コマンドの動作。
 
 | コマンド名 | 動作 |
 |---|---|
@@ -159,19 +174,19 @@ local state = {
 | `toggle_layout` | `ListScreen`と`GridScreen`を切り替える |
 | `search` | `args.query`を`pane.search_query`にセットし、`refresh_files`で`files`を再構築する |
 
-### `open_file(cwd, f)` (内部関数)
+### `open_file(cwd, f)` (`commands.lua`内部関数)
 
 カーソル位置のファイルを`fs.run`経由で外部コマンドで開く。拡張子に対応する
-コマンドが`ASSOCIATIONS`にない場合のデフォルト動作。
+コマンドが`associations`にない場合のデフォルト動作。
 
 - 引数: `cwd`（ファイルのあるディレクトリ）, `f`（`files`の要素。`name`と`size`を使う）
 - 戻り値: なし
 - 判定: `size == 0`、または`grep -Iq ''`の終了コードが`0`ならテキストファイルとみなし`less`で開く。それ以外は`xxd | less`でダンプを表示する
 - ファイル名はシェルクォートしてから`fs.run`に渡す
 
-### `ASSOCIATIONS`（拡張子ごとのコマンド定義）
+### `associations`（拡張子ごとのコマンド定義。`commands.lua`内部変数）
 
-拡張子をキーとし、値をコマンドテンプレート文字列とする連想配列。`config.load().associations`（`lua/config.lua`）から取得する。設定ファイルが存在しない、または不正なTOMLの場合は`config.lua`に内蔵された既定値にフォールバックする。
+拡張子をキーとし、値をコマンドテンプレート文字列とする連想配列。`Commands.register(ctx)`が呼ばれるたびに`config.load().associations`（`lua/config.lua`）から取得する。設定ファイルが存在しない、または不正なTOMLの場合は`config.lua`に内蔵された既定値にフォールバックする。
 
 - キー: 拡張子（`file_extension`が返す値。先頭がドットの隠しファイルで他にドットがない場合は拡張子なし扱いになりマッチしない）
 - 値: コマンドテンプレート文字列。以下のプレースホルダを含められる
@@ -194,24 +209,24 @@ local state = {
 Rust側（`lua_bridge.rs`）が呼び出す唯一の入口。`fm-interface-design.md`の
 「メインループとの対応」で定義した構造をそのまま実装している。
 
-### `draw()`
+### `draw(state)`
 
-- 引数: なし
+- 引数: `state`（`app_state`）
 - 戻り値: なし
 - 動作: `screen.get_size()`で`state.display`を更新し、`screen.clear()`した上で`get_current_screen():view(state)`を呼ぶ
-- 呼び出し元: `on_init`, `on_key`
+- 呼び出し元: `on_init`, `on_key`（いずれも`app_state`を渡す）
 
 ### `on_key(key)`
 
 1. `awaiting_search`（行入力の結果待ちかどうかを示すモジュールレベルの変数）が`true`
    なら、`key`は通常のキー名ではなく確定した検索文字列そのものとして扱う（詳細は
-   「検索（行入力モード）」を参照）。処理後は`draw()`を呼び`true`を返す
+   「検索（行入力モード）」を参照）。処理後は`draw(app_state)`を呼び`true`を返す
 2. `get_current_screen():command_mapper(key)`で`command_name`を決定する
 3. `command_name == "quit"`なら`false`を返して終了（`Invoker`を経由しない）
 4. `command_name == "search"`なら`awaiting_search`を`true`にし、
    `terminal.request_line_input(...)`を呼んで`true`を返す（`Invoker`を経由しない）
-5. `command_name`があれば`Invoker.run(command_name, args)`を呼ぶ
-6. `draw()`を呼ぶ
+5. `command_name`があれば`Invoker.run(command_name, args, app_state)`を呼ぶ
+6. `draw(app_state)`を呼ぶ
 7. `true`を返す
 
 ## 検索（行入力モード）
@@ -225,16 +240,16 @@ Rust側（`lua_bridge.rs`）が呼び出す唯一の入口。`fm-interface-desig
 **流れ**
 
 1. `/`押下: `ListScreen:command_mapper`が`"search"`を返す → `on_key`が
-   `awaiting_search = true`にし、`terminal.request_line_input(0, state.display.height - 1,
-   state.display.width, "/")`を呼ぶ → `true`を返す
+   `awaiting_search = true`にし、`terminal.request_line_input(0, app_state.display.height - 1,
+   app_state.display.width, "/")`を呼ぶ → `true`を返す
 2. Rust側のメインループが、次の反復で`read_key()`の代わりに`read_line(...)`を呼び、
    Enter/Escapeまでブロッキングして行編集を行う
 3. 確定時: 確定した検索文字列そのものが、キャンセル時: `"escape"`が、`key`として
    `on_key`に渡される
 4. `on_key`は`awaiting_search`が`true`であることを見て、`key`を検索文字列として扱う。
-   `key == "escape"`でなければ`Invoker.run("search", { query = key })`を呼ぶ
+   `key == "escape"`でなければ`Invoker.run("search", { query = key }, app_state)`を呼ぶ
    （空文字で確定した場合は絞り込みが解除される）
-5. `awaiting_search`を`false`に戻し、`draw()`を呼ぶ
+5. `awaiting_search`を`false`に戻し、`draw(app_state)`を呼ぶ
 
 ## 例外: on_init の直接呼び出し
 

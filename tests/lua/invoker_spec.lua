@@ -40,6 +40,18 @@ describe("Invoker.run", function()
         assert.equals("エラーが発生しました", err)
     end)
 
+    it("実行時に渡したstateがそのままコマンド関数に渡る", function()
+        local received = nil
+        Invoker.commands.remember_state = function(_args, state)
+            received = state
+        end
+        local state = { message = "hello" }
+
+        Invoker.run("remember_state", nil, state)
+
+        assert.equals(state, received)
+    end)
+
     it("未登録のコマンド名を渡すとエラーにならずnilを返す", function()
         local result = Invoker.run("unknown_command")
 
