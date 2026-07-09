@@ -35,7 +35,7 @@ local state = {
 | `state.panes[N].all_files` | table | `fs.list`の戻り値の先頭に`..`エントリを加えた、フィルタ適用前の生の一覧 |
 | `state.panes[N].files` | table | `all_files`に`show_hidden`のフィルタを適用した一覧。`ListScreen:view`とカーソル移動系コマンドはこちらを見る |
 | `state.active_pane` | number | 操作対象のペイン（`state.panes`のインデックス） |
-| `state.message` | string | 未使用（将来のエラー・通知表示用に予約） |
+| `state.message` | string | エラー・通知メッセージ。空文字でなければ`ListScreen:view`がフッター行に通常のヘルプの代わりに表示する |
 
 `refresh_files(pane)`（`fm.lua`内部関数）が`pane.all_files`から`pane.files`を
 再構築する。`pane.cursor`が新しい`pane.files`の範囲外になった場合は末尾に補正する。
@@ -44,9 +44,22 @@ local state = {
 `current_pane()`（`fm.lua`内部関数）が`state.panes[state.active_pane]`を返す。
 ナビゲーション層・コマンド定義層はこれを経由して状態を読み書きする。
 
-## 画面描画
+## 画面描画・スクリーン管理
 
-`lua/list_screen.lua`が返す`ListScreen`（`lua/screen.lua`の`Screen`を継承）。
+`fm.lua`は「今アクティブなスクリーンはどれか」をモジュールレベルのローカル変数
+（`current_screen`）で保持する。`get_current_screen()`/`set_current_screen(screen_instance)`
+（`fm.lua`内部関数）を経由してのみ読み書きする。
+
+- `draw()`・`on_key`は、固定の`ListScreen`インスタンスではなく`get_current_screen()`が
+  返すインスタンスの`view`/`command_mapper`を呼ぶ
+- スクリーンを切り替えるコマンド（`confirm_delete`/`delete`/`cancel`）は、
+  `Invoker.commands`内から`set_current_screen`を呼ぶ
+- 切り替えは呼ばれた直後の`draw()`から有効になる（次の`on_key`呼び出しを待つ必要はない）
+
+### `ListScreen`（`lua/list_screen.lua`）
+
+`lua/screen.lua`の`Screen`を継承する、ファイル一覧表示のスクリーン。起動直後の
+既定のアクティブスクリーンでもある。
 
 ### `ListScreen:view(data)`
 
@@ -60,10 +73,29 @@ local state = {
 
 - 引数: `key`（キー名）
 - 戻り値: `command_name`（実行すべきコマンド名の文字列。対応するキーがなければ`nil`）, `args`（今は常に`nil`）
-- キー対応: `j`/`down` → `"cursor_down"`, `k`/`up` → `"cursor_up"`, `enter` → `"open_selected"`, `backspace` → `"go_to_parent"`, `.` → `"toggle_hidden"`, `q`/`escape` → `"quit"`
+- キー対応: `j`/`down` → `"cursor_down"`, `k`/`up` → `"cursor_up"`, `enter` → `"open_selected"`, `backspace` → `"go_to_parent"`, `.` → `"toggle_hidden"`, `d` → `"confirm_delete"`, `q`/`escape` → `"quit"`
 
 `"quit"`は`Invoker`を経由せず、`fm.lua`の`on_key`が直接検知して`false`を返す
 特別なコマンド名（メインループを終了させるため）。
+
+### `ConfirmDeleteScreen`（`lua/confirm_delete_screen.lua`）
+
+`Screen`を継承する、削除確認ダイアログのスクリーン。`fm-interface-design.md`の
+「確認ダイアログの実現方法（ブロッキングループを使わない）」で設計した通り、
+ブロッキングループではなくスクリーン切り替えで実現している。
+
+#### `ConfirmDeleteScreen.new(target)` → instance
+
+- 引数: `target`（削除対象のファイルエントリ。`files`の要素）
+
+#### `ConfirmDeleteScreen:view(data)`
+
+- 動作: `ListScreen:view(data)`で下敷きとしてファイル一覧を描画した上で、
+  フッター行に`"<target.name>" を削除しますか？ (y/n)`を重ねて表示する
+
+#### `ConfirmDeleteScreen:command_mapper(key)` → command_name, args
+
+- キー対応: `y` → `"delete"`（`args = { target = target }`）, `n`/`escape` → `"cancel"`
 
 ## コマンド定義（`Invoker.commands`）
 
@@ -77,6 +109,9 @@ local state = {
 | `go_to_parent` | 親ディレクトリへ移動する。戻る前にいたディレクトリの位置にカーソルを合わせる |
 | `open_selected` | カーソル位置がディレクトリなら、そこに移動する（`..`の場合は`go_to_parent`相当）。ファイルなら、拡張子に対応するコマンド（`ASSOCIATIONS`）が定義されていればそれを、なければ`open_file`でファイルを開く |
 | `toggle_hidden` | `show_hidden`を反転し、`refresh_files`で`files`を再構築する |
+| `confirm_delete` | カーソル位置の要素（`".."`は対象外）について、`ConfirmDeleteScreen`へ切り替える |
+| `delete` | `args.target`を`fs.run("rm ...")`（ディレクトリは`rm -r`）で削除する。成功時は`state.message`を空にしてディレクトリを再読み込みし、失敗時はエラーメッセージを`state.message`にセットする。いずれの場合も`ListScreen`へ戻す |
+| `cancel` | 何もせず`ListScreen`へ戻す |
 
 ### `open_file(cwd, f)` (内部関数)
 
@@ -117,12 +152,12 @@ Rust側（`lua_bridge.rs`）が呼び出す唯一の入口。`fm-interface-desig
 
 - 引数: なし
 - 戻り値: なし
-- 動作: `screen.get_size()`で`state.display`を更新し、`screen.clear()`した上で`ListScreen:view(state)`を呼ぶ
+- 動作: `screen.get_size()`で`state.display`を更新し、`screen.clear()`した上で`get_current_screen():view(state)`を呼ぶ
 - 呼び出し元: `on_init`, `on_key`
 
 ### `on_key(key)`
 
-1. `ListScreen:command_mapper(key)`で`command_name`を決定する
+1. `get_current_screen():command_mapper(key)`で`command_name`を決定する
 2. `command_name == "quit"`なら`false`を返して終了（`Invoker`を経由しない）
 3. `command_name`があれば`Invoker.run(command_name, args)`を呼ぶ
 4. `draw()`を呼ぶ

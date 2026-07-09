@@ -1,5 +1,6 @@
 local Invoker = require("invoker")
 local ListScreen = require("list_screen")
+local ConfirmDeleteScreen = require("confirm_delete_screen")
 local config = require("config")
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
@@ -26,6 +27,17 @@ local function current_pane()
 end
 
 local list_screen = ListScreen.new()
+
+-- 今アクティブなスクリーンのインスタンス
+local current_screen = list_screen
+
+local function get_current_screen()
+    return current_screen
+end
+
+local function set_current_screen(screen_instance)
+    current_screen = screen_instance
+end
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 -- ディレクトリナビゲーション
@@ -210,6 +222,36 @@ Invoker.commands.toggle_hidden = function()
     refresh_files(pane)
 end
 
+-- カーソル位置の要素の削除を確認するスクリーンに切り替える（".."は対象外）
+Invoker.commands.confirm_delete = function()
+    local pane = current_pane()
+    local f = pane.files[pane.cursor]
+    if not f or f.name == ".." then
+        return
+    end
+    set_current_screen(ConfirmDeleteScreen.new(f))
+end
+
+-- 確認ダイアログで"y"が押されたときに呼ばれる。実際の削除を実行する
+Invoker.commands.delete = function(args)
+    local pane = current_pane()
+    local target = args.target
+    local quoted = shell_quote(join_path(pane.cwd, target.name))
+    local cmd = target.is_dir and ("rm -r " .. quoted) or ("rm " .. quoted)
+    if fs.run(cmd) == 0 then
+        state.message = ""
+        enter_directory(pane.cwd, nil)
+    else
+        state.message = '"' .. target.name .. '" の削除に失敗しました'
+    end
+    set_current_screen(list_screen)
+end
+
+-- 確認ダイアログで"n"/escapeが押されたときに呼ばれる。何もせず一覧へ戻る
+Invoker.commands.cancel = function()
+    set_current_screen(list_screen)
+end
+
 -- カーソル位置の要素を開く
 Invoker.commands.open_selected = function()
     local pane = current_pane()
@@ -241,7 +283,7 @@ local function draw()
     state.display.width = width
     state.display.height = height
     screen.clear()
-    list_screen:view(state)
+    get_current_screen():view(state)
 end
 
 -- 初期化
@@ -260,7 +302,7 @@ end
 
 -- キー処理
 function on_key(key)
-    local command_name, args = list_screen:command_mapper(key)
+    local command_name, args = get_current_screen():command_mapper(key)
     if command_name == "quit" then
         return false
     end

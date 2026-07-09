@@ -298,6 +298,77 @@ describe("fm", function()
         assert.is_not_nil(screen.writes[1]:find("\27[7m", 1, true))
     end)
 
+    it("dキーを押すと削除確認メッセージが表示される", function()
+        on_init()
+        on_key("j") -- カーソルを"sub"に合わせる
+        on_key("j") -- カーソルを"a.txt"に合わせる
+        on_key("d")
+        assert.is_not_nil(screen.writes[9]:find('"a.txt" を削除しますか？', 1, true))
+    end)
+
+    it("確認ダイアログでnを押すと削除されず一覧に戻る", function()
+        on_init()
+        on_key("j")
+        on_key("j")
+        local calls_before = #fs.calls
+        on_key("d")
+        on_key("n")
+        assert.equals(calls_before, #fs.calls)
+        assert.is_not_nil(screen.writes[9]:find("q:終了", 1, true))
+    end)
+
+    it("確認ダイアログでescapeを押しても削除されず一覧に戻る", function()
+        on_init()
+        on_key("j")
+        on_key("j")
+        local calls_before = #fs.calls
+        on_key("d")
+        on_key("escape")
+        assert.equals(calls_before, #fs.calls)
+    end)
+
+    it("確認ダイアログでyを押すとrmコマンドが実行される", function()
+        on_init()
+        on_key("j")
+        on_key("j") -- カーソルを"a.txt"に合わせる
+        on_key("d")
+        on_key("y")
+        assert.equals("rm '/root/a.txt'", fs.calls[#fs.calls])
+    end)
+
+    it("ディレクトリを削除する場合はrm -rが使われる", function()
+        on_init()
+        on_key("j") -- カーソルを"sub"に合わせる
+        on_key("d")
+        on_key("y")
+        assert.equals("rm -r '/root/sub'", fs.calls[#fs.calls])
+    end)
+
+    it("削除に失敗した場合はエラーメッセージが表示される", function()
+        _G.fs.exit_code = 1
+        on_init()
+        on_key("j")
+        on_key("j")
+        on_key("d")
+        on_key("y")
+        assert.is_not_nil(screen.writes[9]:find('"a.txt" の削除に失敗しました', 1, true))
+    end)
+
+    it("削除に成功した場合は一覧に戻りフッターが通常表示に戻る", function()
+        on_init()
+        on_key("j")
+        on_key("j")
+        on_key("d")
+        on_key("y")
+        assert.is_not_nil(screen.writes[9]:find("q:終了", 1, true))
+    end)
+
+    it("'..'の上でdキーを押しても削除確認は表示されない", function()
+        on_init()
+        on_key("d")
+        assert.is_not_nil(screen.writes[9]:find("q:終了", 1, true))
+    end)
+
     it("ファイル名が列幅を超える場合、拡張子を残して省略記号で切り詰める", function()
         _G.fs.list = function()
             return {
