@@ -63,11 +63,22 @@ local function make_toml()
     }
 end
 
+-- terminal.request_line_inputはRust側が提供する関数のため、busted実行環境には実体がない。
+-- 呼び出し内容を記録するだけのモックに差し替える
+local function make_terminal()
+    local terminal = { calls = {} }
+    terminal.request_line_input = function(x, y, max_width, prompt)
+        table.insert(terminal.calls, { x = x, y = y, max_width = max_width, prompt = prompt })
+    end
+    return terminal
+end
+
 describe("fm", function()
     before_each(function()
         _G.fs = make_fs()
         _G.toml = make_toml()
         _G.screen = make_screen(80, 10)
+        _G.terminal = make_terminal()
         dofile("lua/fm.lua")
     end)
 
@@ -75,6 +86,7 @@ describe("fm", function()
         _G.fs = nil
         _G.toml = nil
         _G.screen = nil
+        _G.terminal = nil
         _G.on_init = nil
         _G.on_key = nil
     end)
@@ -395,6 +407,46 @@ describe("fm", function()
         on_key("d")
         on_key("n")
         assert.is_nil(screen.writes[3]:find("rw-r--r--", 1, true))
+    end)
+
+    it("'/'キーを押すとterminal.request_line_inputが呼ばれる", function()
+        on_init()
+        on_key("/")
+        assert.equals(1, #terminal.calls)
+        assert.equals("/", terminal.calls[1].prompt)
+    end)
+
+    it("検索文字列を確定すると一致するファイルだけが表示される", function()
+        on_init()
+        on_key("/")
+        on_key("a.txt") -- Rust側のread_lineが確定文字列を渡してon_keyを呼ぶことを模している
+        assert.is_not_nil(screen.writes[2]:find("a.txt", 1, true))
+        assert.is_nil(screen.writes[2]:find("empty.txt", 1, true))
+    end)
+
+    it("検索をescapeでキャンセルすると絞り込まれない", function()
+        on_init()
+        on_key("/")
+        on_key("escape")
+        assert.is_not_nil(screen.writes[4]:find("empty.txt", 1, true))
+    end)
+
+    it("検索を空文字で確定すると絞り込みが解除される", function()
+        on_init()
+        on_key("/")
+        on_key("a.txt") -- 絞り込む
+        on_key("/")
+        on_key("") -- 空文字で確定
+        assert.is_not_nil(screen.writes[4]:find("empty.txt", 1, true))
+    end)
+
+    it("親ディレクトリへ移動すると検索フィルタがリセットされる", function()
+        on_init()
+        on_key("/")
+        on_key("empty") -- "empty"で絞り込む
+        on_key("backspace") -- 親("/")へ移動("root"にカーソルが合う)
+        on_key("enter") -- "/root"に再度入る
+        assert.is_not_nil(screen.writes[3]:find("a.txt", 1, true))
     end)
 
     it("ファイル名が列幅を超える場合、拡張子を残して省略記号で切り詰める", function()

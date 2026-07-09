@@ -15,8 +15,8 @@ local state = {
     display = { width = 0, height = 0 },
     panes = {
         -- all_files: fs.list()の結果に".."を加えた生の一覧
-        -- files: all_filesにshow_hiddenのフィルタを適用した、実際に表示・操作する一覧
-        { cwd = fs.cwd(), cursor = 1, show_hidden = true, all_files = {}, files = {} },
+        -- files: all_filesにshow_hidden・search_queryのフィルタを適用した、実際に表示・操作する一覧
+        { cwd = fs.cwd(), cursor = 1, show_hidden = true, search_query = "", all_files = {}, files = {} },
     },
     active_pane = 1,
     message = "",
@@ -61,15 +61,22 @@ local function load_dir(path)
     return list
 end
 
--- all_filesに、show_hiddenに応じた隠しファイルの絞り込みを適用したものを返す
--- ".."は隠しファイル扱いにせず、show_hiddenの値によらず常に含める
-local function apply_hidden_filter(all_files, show_hidden)
-    if show_hidden then
-        return all_files
+-- nameがsearch_queryを含むか判定する（大小文字を区別しない部分一致）。空文字は常にマッチする
+local function matches_search(name, search_query)
+    if search_query == "" then
+        return true
     end
+    return name:lower():find(search_query:lower(), 1, true) ~= nil
+end
+
+-- all_filesに、show_hidden・search_queryに応じた絞り込みを適用したものを返す
+-- ".."はどちらのフィルタの対象にもせず、常に含める
+local function build_visible_files(all_files, show_hidden, search_query)
     local filtered = {}
     for _, f in ipairs(all_files) do
-        if f.name == ".." or not f.name:match("^%.") then
+        if f.name == ".." then
+            table.insert(filtered, f)
+        elseif (show_hidden or not f.name:match("^%.")) and matches_search(f.name, search_query) then
             table.insert(filtered, f)
         end
     end
@@ -78,7 +85,7 @@ end
 
 -- ペインのall_filesからfilesを再構築し、カーソルが範囲外になっていれば補正する
 local function refresh_files(pane)
-    pane.files = apply_hidden_filter(pane.all_files, pane.show_hidden)
+    pane.files = build_visible_files(pane.all_files, pane.show_hidden, pane.search_query)
     if pane.cursor > #pane.files then
         pane.cursor = math.max(#pane.files, 1)
     end
@@ -125,6 +132,7 @@ local function enter_directory(newdir, cursor_name)
     local pane = current_pane()
     pane.cwd = newdir
     pane.all_files = list
+    pane.search_query = ""
     refresh_files(pane)
     pane.cursor = (cursor_name and find_index_by_name(pane.files, cursor_name)) or 1
 end
@@ -255,6 +263,13 @@ Invoker.commands.cancel = function(args)
     set_current_screen(args.previous_screen)
 end
 
+-- 検索文字列が確定した後に呼ばれる。ファイル一覧を絞り込む
+Invoker.commands.search = function(args)
+    local pane = current_pane()
+    pane.search_query = args.query or ""
+    refresh_files(pane)
+end
+
 -- 一覧表示(1列)と2段組表示を切り替える
 Invoker.commands.toggle_layout = function()
     if get_current_screen() == list_screen then
@@ -312,11 +327,29 @@ function on_init()
     draw()
 end
 
+-- 直前のon_key呼び出しでterminal.request_line_inputを呼び、行入力の結果待ちかどうか
+local awaiting_search = false
+
 -- キー処理
 function on_key(key)
+    if awaiting_search then
+        awaiting_search = false
+        if key ~= "escape" then
+            -- keyは1文字のキー名ではなく、確定した検索文字列そのもの
+            Invoker.run("search", { query = key })
+        end
+        draw()
+        return true
+    end
+
     local command_name, args = get_current_screen():command_mapper(key)
     if command_name == "quit" then
         return false
+    end
+    if command_name == "search" then
+        awaiting_search = true
+        terminal.request_line_input(0, state.display.height - 1, state.display.width, "/")
+        return true
     end
     if command_name then
         Invoker.run(command_name, args)

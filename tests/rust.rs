@@ -9,3 +9,6 @@ mod lua_bridge;
 
 #[path = "rust/toml_bridge.rs"]
 mod toml_bridge;
+
+#[path = "rust/line_input.rs"]
+mod line_input;

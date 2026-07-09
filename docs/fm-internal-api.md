@@ -18,7 +18,7 @@
 local state = {
     display = { width = 0, height = 0 },
     panes = {
-        { cwd = "...", cursor = 1, show_hidden = true, all_files = {}, files = {} },
+        { cwd = "...", cursor = 1, show_hidden = true, search_query = "", all_files = {}, files = {} },
     },
     active_pane = 1,
     message = "",
@@ -32,14 +32,17 @@ local state = {
 | `state.panes[N].cwd` | string | そのペインのカレントディレクトリの絶対パス |
 | `state.panes[N].cursor` | number | カーソル位置（`files`の1始まりインデックス） |
 | `state.panes[N].show_hidden` | boolean | 隠しファイル（`.`始まりの名前。`..`自体は対象外）を表示するか。既定は`true` |
+| `state.panes[N].search_query` | string | 検索文字列。空文字なら絞り込みなし。ディレクトリ移動時に空文字へリセットされる |
 | `state.panes[N].all_files` | table | `fs.list`の戻り値の先頭に`..`エントリを加えた、フィルタ適用前の生の一覧 |
-| `state.panes[N].files` | table | `all_files`に`show_hidden`のフィルタを適用した一覧。`ListScreen:view`とカーソル移動系コマンドはこちらを見る |
+| `state.panes[N].files` | table | `all_files`に`show_hidden`・`search_query`のフィルタを適用した一覧。`ListScreen:view`とカーソル移動系コマンドはこちらを見る |
 | `state.active_pane` | number | 操作対象のペイン（`state.panes`のインデックス） |
 | `state.message` | string | エラー・通知メッセージ。空文字でなければ`ListScreen:view`がフッター行に通常のヘルプの代わりに表示する |
 
 `refresh_files(pane)`（`fm.lua`内部関数）が`pane.all_files`から`pane.files`を
-再構築する。`pane.cursor`が新しい`pane.files`の範囲外になった場合は末尾に補正する。
-ディレクトリ読み込み時・`toggle_hidden`実行時に呼ばれる。
+再構築する（`show_hidden`・`search_query`の両方のフィルタを適用。`".."`はどちらの
+対象にもならず常に含まれる）。`pane.cursor`が新しい`pane.files`の範囲外になった
+場合は末尾に補正する。ディレクトリ読み込み時・`toggle_hidden`実行時・検索確定時に
+呼ばれる。
 
 `current_pane()`（`fm.lua`内部関数）が`state.panes[state.active_pane]`を返す。
 ナビゲーション層・コマンド定義層はこれを経由して状態を読み書きする。
@@ -73,10 +76,11 @@ local state = {
 
 - 引数: `key`（キー名）
 - 戻り値: `command_name`（実行すべきコマンド名の文字列。対応するキーがなければ`nil`）, `args`（今は常に`nil`）
-- キー対応: `j`/`down` → `"cursor_down"`, `k`/`up` → `"cursor_up"`, `enter` → `"open_selected"`, `backspace` → `"go_to_parent"`, `.` → `"toggle_hidden"`, `d` → `"confirm_delete"`, `v` → `"toggle_layout"`, `q`/`escape` → `"quit"`
+- キー対応: `j`/`down` → `"cursor_down"`, `k`/`up` → `"cursor_up"`, `enter` → `"open_selected"`, `backspace` → `"go_to_parent"`, `.` → `"toggle_hidden"`, `d` → `"confirm_delete"`, `v` → `"toggle_layout"`, `/` → `"search"`, `q`/`escape` → `"quit"`
 
-`"quit"`は`Invoker`を経由せず、`fm.lua`の`on_key`が直接検知して`false`を返す
-特別なコマンド名（メインループを終了させるため）。
+`"quit"`と`"search"`は`Invoker`を経由せず、`fm.lua`の`on_key`が直接検知する
+特別なコマンド名。`"quit"`は`false`を返してメインループを終了させる。`"search"`は
+行入力モードへの切り替えをリクエストする（詳細は「検索（行入力モード）」を参照）。
 
 ### `GridScreen`（`lua/grid_screen.lua`）
 
@@ -128,6 +132,7 @@ local state = {
 | `delete` | `args.target`を`fs.run("rm ...")`（ディレクトリは`rm -r`）で削除する。成功時は`state.message`を空にしてディレクトリを再読み込みし、失敗時はエラーメッセージを`state.message`にセットする。いずれの場合も`args.previous_screen`へ戻す |
 | `cancel` | 何もせず`args.previous_screen`へ戻す |
 | `toggle_layout` | `ListScreen`と`GridScreen`を切り替える |
+| `search` | `args.query`を`pane.search_query`にセットし、`refresh_files`で`files`を再構築する |
 
 ### `open_file(cwd, f)` (内部関数)
 
@@ -173,11 +178,38 @@ Rust側（`lua_bridge.rs`）が呼び出す唯一の入口。`fm-interface-desig
 
 ### `on_key(key)`
 
-1. `get_current_screen():command_mapper(key)`で`command_name`を決定する
-2. `command_name == "quit"`なら`false`を返して終了（`Invoker`を経由しない）
-3. `command_name`があれば`Invoker.run(command_name, args)`を呼ぶ
-4. `draw()`を呼ぶ
-5. `true`を返す
+1. `awaiting_search`（行入力の結果待ちかどうかを示すモジュールレベルの変数）が`true`
+   なら、`key`は通常のキー名ではなく確定した検索文字列そのものとして扱う（詳細は
+   「検索（行入力モード）」を参照）。処理後は`draw()`を呼び`true`を返す
+2. `get_current_screen():command_mapper(key)`で`command_name`を決定する
+3. `command_name == "quit"`なら`false`を返して終了（`Invoker`を経由しない）
+4. `command_name == "search"`なら`awaiting_search`を`true`にし、
+   `terminal.request_line_input(...)`を呼んで`true`を返す（`Invoker`を経由しない）
+5. `command_name`があれば`Invoker.run(command_name, args)`を呼ぶ
+6. `draw()`を呼ぶ
+7. `true`を返す
+
+## 検索（行入力モード）
+
+検索は、削除確認・表示切替とは異なり、Rust側の行編集（`terminal.request_line_input`/
+`read_line`。詳細は`docs/API.md`）を経由する。`fm-interface-design.md`の
+「`on_key`の戻り値による入力モード指定」で設計した通り、`on_key`の戻り値自体は
+`true`/`false`のまま変えず、Rust側への行入力リクエストは別チャンネル
+（`terminal.request_line_input`の呼び出し）で行う。
+
+**流れ**
+
+1. `/`押下: `ListScreen:command_mapper`が`"search"`を返す → `on_key`が
+   `awaiting_search = true`にし、`terminal.request_line_input(0, state.display.height - 1,
+   state.display.width, "/")`を呼ぶ → `true`を返す
+2. Rust側のメインループが、次の反復で`read_key()`の代わりに`read_line(...)`を呼び、
+   Enter/Escapeまでブロッキングして行編集を行う
+3. 確定時: 確定した検索文字列そのものが、キャンセル時: `"escape"`が、`key`として
+   `on_key`に渡される
+4. `on_key`は`awaiting_search`が`true`であることを見て、`key`を検索文字列として扱う。
+   `key == "escape"`でなければ`Invoker.run("search", { query = key })`を呼ぶ
+   （空文字で確定した場合は絞り込みが解除される）
+5. `awaiting_search`を`false`に戻し、`draw()`を呼ぶ
 
 ## 例外: on_init の直接呼び出し
 

@@ -93,7 +93,7 @@ function ListScreen:view(data) -- luacheck: ignore
     end
 
     local footer = data.message ~= "" and data.message
-        or "j/down:↓  k/up:↑  enter:開く  backspace:親へ  d:削除  .:隠しファイル  v:表示切替  q:終了"
+        or "j/down:↓  k/up:↑  enter:開く  backspace:親へ  d:削除  .:隠しファイル  v:表示切替  /:検索  q:終了"
     screen.write(0, data.display.height - 1, footer)
 end
 
@@ -112,6 +112,8 @@ function ListScreen:command_mapper(key) -- luacheck: ignore
         return "confirm_delete"
     elseif key == "v" then
         return "toggle_layout"
+    elseif key == "/" then
+        return "search"
     elseif key == "q" or key == "escape" then
         return "quit"
     end

@@ -1,4 +1,5 @@
 use fm::terminal::{RawModeGuard, read_key};
+use fm::line_input::read_line;
 use fm::lua_bridge::LuaBridge;
 
 fn main() {
@@ -21,20 +22,37 @@ fn main() {
     });
 
     loop {
-        if let Some(key) = read_key() {
-            // Ctrl+Cは強制終了。Luaに渡さずここでメインループを抜けることで、
-            // _guardのDropが実行されターミナルの状態が復元される
-            if key == "ctrl-c" {
-                break;
+        // 直前のon_key呼び出し中にterminal.request_line_inputが呼ばれていれば、
+        // 今回の反復は1文字ずつではなく行入力モードでキーを読む
+        let key = if let Some(request) = bridge.take_pending_line_input() {
+            read_line(request.x, request.y, request.max_width, &request.prompt)
+        } else {
+            match read_key() {
+                Some(k) => k,
+                None => continue,
             }
-            match bridge.call_on_key(&key) {
-                Ok(false) => break,
-                Ok(true) => {}
-                Err(e) => {
-                    eprintln!("on_key エラー: {}", e);
-                    break;
-                }
-            }
+        };
+
+        // Ctrl+Cは強制終了。メインループの通常の終了経路で抜けることで、
+        // _guardのDropが実行されターミナルの状態が復元される
+        if key == "ctrl-c" {
+            break;
+        }
+
+        if !dispatch_key(&bridge, &key) {
+            break;
+        }
+    }
+}
+
+/// 1回のon_key呼び出し結果を処理し、ループを継続すべきかを返す
+fn dispatch_key(bridge: &LuaBridge, key: &str) -> bool {
+    match bridge.call_on_key(key) {
+        Ok(false) => false,
+        Ok(true) => true,
+        Err(e) => {
+            eprintln!("on_key エラー: {}", e);
+            false
         }
     }
 }

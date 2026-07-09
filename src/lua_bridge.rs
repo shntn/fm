@@ -1,11 +1,15 @@
 use mlua::prelude::*;
+use std::cell::RefCell;
 use std::path::Path;
+use std::rc::Rc;
 use crate::screen;
 use crate::filesystem;
 use crate::toml_bridge;
+use crate::line_input::{self, LineInputRequest, PendingLineInput};
 
 pub struct LuaBridge {
     lua: Lua,
+    pending_line_input: PendingLineInput,
 }
 
 impl LuaBridge {
@@ -14,7 +18,9 @@ impl LuaBridge {
         screen::register(&lua)?;
         filesystem::register(&lua)?;
         toml_bridge::register(&lua)?;
-        Ok(LuaBridge { lua })
+        let pending_line_input: PendingLineInput = Rc::new(RefCell::new(None));
+        line_input::register(&lua, pending_line_input.clone())?;
+        Ok(LuaBridge { lua, pending_line_input })
     }
 
     pub fn load_script(&self, path: &str) -> LuaResult<()> {
@@ -48,5 +54,10 @@ impl LuaBridge {
             LuaValue::Boolean(false) => Ok(false),
             _ => Ok(true),
         }
+    }
+
+    /// on_key呼び出し中にterminal.request_line_inputが呼ばれていれば、そのリクエストを取り出す
+    pub fn take_pending_line_input(&self) -> Option<LineInputRequest> {
+        self.pending_line_input.borrow_mut().take()
     }
 }

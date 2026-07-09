@@ -89,3 +89,32 @@ fn load_script_allows_requiring_sibling_modules() {
     assert!(result.is_ok());
     fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn take_pending_line_input_returns_request_made_during_on_key() {
+    let dir = make_temp_dir("bridge-line-input");
+    let script = dir.join("main.lua");
+    fs::write(
+        &script,
+        r#"
+        function on_init() end
+        function on_key(key)
+            terminal.request_line_input(0, 23, 80, "/")
+            return true
+        end
+        "#,
+    )
+    .unwrap();
+
+    let bridge = LuaBridge::new().unwrap();
+    bridge.load_script(script.to_str().unwrap()).unwrap();
+    bridge.call_on_init().unwrap();
+
+    assert!(bridge.take_pending_line_input().is_none());
+    bridge.call_on_key("/").unwrap();
+    let request = bridge.take_pending_line_input().unwrap();
+    assert_eq!("/", request.prompt);
+    assert!(bridge.take_pending_line_input().is_none());
+
+    fs::remove_dir_all(&dir).ok();
+}
