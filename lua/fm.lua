@@ -1,5 +1,6 @@
 local Invoker = require("invoker")
 local ListScreen = require("list_screen")
+local GridScreen = require("grid_screen")
 local ConfirmDeleteScreen = require("confirm_delete_screen")
 local config = require("config")
 
@@ -27,6 +28,7 @@ local function current_pane()
 end
 
 local list_screen = ListScreen.new()
+local grid_screen = GridScreen.new()
 
 -- 今アクティブなスクリーンのインスタンス
 local current_screen = list_screen
@@ -223,13 +225,14 @@ Invoker.commands.toggle_hidden = function()
 end
 
 -- カーソル位置の要素の削除を確認するスクリーンに切り替える（".."は対象外）
+-- 呼び出し元のスクリーン(一覧/2段組)を渡し、下敷きの描画とy/n後の復帰先に使う
 Invoker.commands.confirm_delete = function()
     local pane = current_pane()
     local f = pane.files[pane.cursor]
     if not f or f.name == ".." then
         return
     end
-    set_current_screen(ConfirmDeleteScreen.new(f))
+    set_current_screen(ConfirmDeleteScreen.new(f, get_current_screen()))
 end
 
 -- 確認ダイアログで"y"が押されたときに呼ばれる。実際の削除を実行する
@@ -244,12 +247,21 @@ Invoker.commands.delete = function(args)
     else
         state.message = '"' .. target.name .. '" の削除に失敗しました'
     end
-    set_current_screen(list_screen)
+    set_current_screen(args.previous_screen)
 end
 
--- 確認ダイアログで"n"/escapeが押されたときに呼ばれる。何もせず一覧へ戻る
-Invoker.commands.cancel = function()
-    set_current_screen(list_screen)
+-- 確認ダイアログで"n"/escapeが押されたときに呼ばれる。何もせず呼び出し元のスクリーンへ戻る
+Invoker.commands.cancel = function(args)
+    set_current_screen(args.previous_screen)
+end
+
+-- 一覧表示(1列)と2段組表示を切り替える
+Invoker.commands.toggle_layout = function()
+    if get_current_screen() == list_screen then
+        set_current_screen(grid_screen)
+    else
+        set_current_screen(list_screen)
+    end
 end
 
 -- カーソル位置の要素を開く

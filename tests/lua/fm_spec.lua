@@ -369,6 +369,34 @@ describe("fm", function()
         assert.is_not_nil(screen.writes[9]:find("q:終了", 1, true))
     end)
 
+    it("'v'キーを押すと2段組表示に切り替わる(パーミッション列が表示されなくなる)", function()
+        on_init()
+        on_key("j") -- カーソルを"sub"に合わせる
+        on_key("j") -- カーソルを"a.txt"に合わせる
+        assert.is_not_nil(screen.writes[3]:find("rw-r--r--", 1, true))
+        on_key("v")
+        assert.is_nil(screen.writes[3]:find("rw-r--r--", 1, true))
+    end)
+
+    it("'v'キーを2回押すと1列表示に戻る", function()
+        on_init()
+        on_key("v")
+        on_key("v")
+        on_key("j")
+        on_key("j")
+        assert.is_not_nil(screen.writes[3]:find("rw-r--r--", 1, true))
+    end)
+
+    it("2段組表示中に削除確認をキャンセルすると2段組表示のまま戻る", function()
+        on_init()
+        on_key("v") -- 2段組表示に切り替え
+        on_key("j")
+        on_key("j") -- カーソルを"a.txt"に合わせる
+        on_key("d")
+        on_key("n")
+        assert.is_nil(screen.writes[3]:find("rw-r--r--", 1, true))
+    end)
+
     it("ファイル名が列幅を超える場合、拡張子を残して省略記号で切り詰める", function()
         _G.fs.list = function()
             return {

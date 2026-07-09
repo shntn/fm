@@ -168,6 +168,11 @@ describe("ListScreen:command_mapper", function()
         assert.equals("toggle_hidden", view:command_mapper("."))
     end)
 
+    it("'v'はtoggle_layoutを返す", function()
+        local view = ListScreen.new()
+        assert.equals("toggle_layout", view:command_mapper("v"))
+    end)
+
     it("q/escapeはquitを返す", function()
         local view = ListScreen.new()
         assert.equals("quit", view:command_mapper("q"))

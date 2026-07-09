@@ -52,7 +52,7 @@ local state = {
 
 - `draw()`・`on_key`は、固定の`ListScreen`インスタンスではなく`get_current_screen()`が
   返すインスタンスの`view`/`command_mapper`を呼ぶ
-- スクリーンを切り替えるコマンド（`confirm_delete`/`delete`/`cancel`）は、
+- スクリーンを切り替えるコマンド（`confirm_delete`/`delete`/`cancel`/`toggle_layout`）は、
   `Invoker.commands`内から`set_current_screen`を呼ぶ
 - 切り替えは呼ばれた直後の`draw()`から有効になる（次の`on_key`呼び出しを待つ必要はない）
 
@@ -73,10 +73,19 @@ local state = {
 
 - 引数: `key`（キー名）
 - 戻り値: `command_name`（実行すべきコマンド名の文字列。対応するキーがなければ`nil`）, `args`（今は常に`nil`）
-- キー対応: `j`/`down` → `"cursor_down"`, `k`/`up` → `"cursor_up"`, `enter` → `"open_selected"`, `backspace` → `"go_to_parent"`, `.` → `"toggle_hidden"`, `d` → `"confirm_delete"`, `q`/`escape` → `"quit"`
+- キー対応: `j`/`down` → `"cursor_down"`, `k`/`up` → `"cursor_up"`, `enter` → `"open_selected"`, `backspace` → `"go_to_parent"`, `.` → `"toggle_hidden"`, `d` → `"confirm_delete"`, `v` → `"toggle_layout"`, `q`/`escape` → `"quit"`
 
 `"quit"`は`Invoker`を経由せず、`fm.lua`の`on_key`が直接検知して`false`を返す
 特別なコマンド名（メインループを終了させるため）。
+
+### `GridScreen`（`lua/grid_screen.lua`）
+
+`ListScreen`を継承する、ファイル一覧を2段組で表示するスクリーン。
+`command_mapper`は上書きせず`ListScreen`のものをそのまま使う（カーソル移動・
+削除・隠しファイル切替などのキー操作は表示レイアウトに依存しないため）。
+`view`のみ上書きし、名前だけを2列（`COLUMNS_WIDTH`幅ずつ）に並べて表示する。
+パーミッション・サイズ・更新日時は表示しない。ページングは行わない
+（`list_h × 2`件を超えるファイルは表示されない）。
 
 ### `ConfirmDeleteScreen`（`lua/confirm_delete_screen.lua`）
 
@@ -84,18 +93,24 @@ local state = {
 「確認ダイアログの実現方法（ブロッキングループを使わない）」で設計した通り、
 ブロッキングループではなくスクリーン切り替えで実現している。
 
-#### `ConfirmDeleteScreen.new(target)` → instance
+#### `ConfirmDeleteScreen.new(target, previous_screen)` → instance
 
-- 引数: `target`（削除対象のファイルエントリ。`files`の要素）
+- 引数: `target`（削除対象のファイルエントリ。`files`の要素）, `previous_screen`
+  （呼び出し元のスクリーンのインスタンス。`ListScreen`または`GridScreen`）
+- `previous_screen`は、下敷きの描画（`view`）と、`y`/`n`後の復帰先の両方に使われる。
+  これにより、`GridScreen`表示中に削除確認を開いても、キャンセル・削除後に
+  `ListScreen`へ戻ってしまうことなく、元の表示のまま維持される
 
 #### `ConfirmDeleteScreen:view(data)`
 
-- 動作: `ListScreen:view(data)`で下敷きとしてファイル一覧を描画した上で、
-  フッター行に`"<target.name>" を削除しますか？ (y/n)`を重ねて表示する
+- 動作: `previous_screen:view(data)`で下敷きを描画した上で、フッター行に
+  `"<target.name>" を削除しますか？ (y/n)`を画面幅いっぱいにパディングして
+  重ねて表示する（下敷きのフッター文字列の残骸が残らないようにするため）
 
 #### `ConfirmDeleteScreen:command_mapper(key)` → command_name, args
 
-- キー対応: `y` → `"delete"`（`args = { target = target }`）, `n`/`escape` → `"cancel"`
+- キー対応: `y` → `"delete"`（`args = { target = target, previous_screen = previous_screen }`）,
+  `n`/`escape` → `"cancel"`（`args = { previous_screen = previous_screen }`）
 
 ## コマンド定義（`Invoker.commands`）
 
@@ -109,9 +124,10 @@ local state = {
 | `go_to_parent` | 親ディレクトリへ移動する。戻る前にいたディレクトリの位置にカーソルを合わせる |
 | `open_selected` | カーソル位置がディレクトリなら、そこに移動する（`..`の場合は`go_to_parent`相当）。ファイルなら、拡張子に対応するコマンド（`ASSOCIATIONS`）が定義されていればそれを、なければ`open_file`でファイルを開く |
 | `toggle_hidden` | `show_hidden`を反転し、`refresh_files`で`files`を再構築する |
-| `confirm_delete` | カーソル位置の要素（`".."`は対象外）について、`ConfirmDeleteScreen`へ切り替える |
-| `delete` | `args.target`を`fs.run("rm ...")`（ディレクトリは`rm -r`）で削除する。成功時は`state.message`を空にしてディレクトリを再読み込みし、失敗時はエラーメッセージを`state.message`にセットする。いずれの場合も`ListScreen`へ戻す |
-| `cancel` | 何もせず`ListScreen`へ戻す |
+| `confirm_delete` | カーソル位置の要素（`".."`は対象外）について、現在のスクリーンを`previous_screen`として渡し`ConfirmDeleteScreen`へ切り替える |
+| `delete` | `args.target`を`fs.run("rm ...")`（ディレクトリは`rm -r`）で削除する。成功時は`state.message`を空にしてディレクトリを再読み込みし、失敗時はエラーメッセージを`state.message`にセットする。いずれの場合も`args.previous_screen`へ戻す |
+| `cancel` | 何もせず`args.previous_screen`へ戻す |
+| `toggle_layout` | `ListScreen`と`GridScreen`を切り替える |
 
 ### `open_file(cwd, f)` (内部関数)
 
