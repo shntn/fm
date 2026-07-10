@@ -3,16 +3,6 @@ local config = require("config")
 
 local Commands = {}
 
--- リストの中からnameと一致する要素のインデックスを探す
-local function find_index_by_name(list, name)
-    for i, item in ipairs(list) do
-        if item.name == name then
-            return i
-        end
-    end
-    return nil
-end
-
 -- pathの親ディレクトリのパスを返す
 local function parent_dir(path)
     local base = path:match("^(.*)/[^/]+$")
@@ -102,7 +92,6 @@ end
 -- ctx:
 --   current_pane       (state) -> 操作対象のペインを返す関数
 --   refresh_files      (pane) -> pane.all_filesからpane.filesを再構築する関数
---   load_dir           (path) -> list, err。ディレクトリの一覧を読み込む関数
 --   get_current_screen アクティブなスクリーンを返す関数
 --   set_current_screen アクティブなスクリーンを切り替える関数
 --   list_screen        ListScreenのインスタンス
@@ -113,24 +102,24 @@ function Commands.register(ctx)
     -- config.load()が返す設定ファイル(またはその既定値)のassociationsセクションから読み込む
     local associations = config.load().associations
 
-    -- newdirに移動する。cursor_nameが指定されていれば、その名前の要素にカーソルを合わせる
+    -- newdirに移動する。cursor_nameが指定されていれば、その名前の要素にカーソルを合わせる。
+    -- ファイル一覧の読み込み・カーソルの実際の配置はここでは行わず、戻り値の
+    -- instructionを通じてdraw()のデータ準備に委ねる（詳細はfm.luaのprepare_dataを
+    -- 参照）。cursor_nameのnilは「対象指定なし（読み込み後カーソルは先頭に置く）」を
+    -- 意味するが、そのままinstruction.cursor_nameに入れると「カーソルには触れない」
+    -- （削除コマンドのinstructionのように、cursor_nameキー自体を持たない場合）と
+    -- 区別できなくなるため、falseに変換して保持する
     local function enter_directory(state, newdir, cursor_name)
-        local list, err = ctx.load_dir(newdir)
-        if err then
-            return
-        end
         local pane = ctx.current_pane(state)
         pane.cwd = newdir
-        pane.all_files = list
         pane.search_query = ""
-        ctx.refresh_files(pane)
-        pane.cursor = (cursor_name and find_index_by_name(pane.files, cursor_name)) or 1
+        return { reload = true, cursor_name = cursor_name or false }
     end
 
     -- 親ディレクトリへ移動する。戻った後は元いた子ディレクトリの位置にカーソルを合わせる
     local function go_to_parent(state)
         local pane = ctx.current_pane(state)
-        enter_directory(state, parent_dir(pane.cwd), last_segment(pane.cwd))
+        return enter_directory(state, parent_dir(pane.cwd), last_segment(pane.cwd))
     end
 
     Invoker.commands.cursor_down = function(_args, state)
@@ -148,7 +137,7 @@ function Commands.register(ctx)
     end
 
     Invoker.commands.go_to_parent = function(_args, state)
-        go_to_parent(state)
+        return go_to_parent(state)
     end
 
     Invoker.commands.toggle_hidden = function(_args, state)
@@ -168,19 +157,23 @@ function Commands.register(ctx)
         ctx.set_current_screen(ctx.ConfirmDeleteScreen.new(f, ctx.get_current_screen()))
     end
 
-    -- 確認ダイアログで"y"が押されたときに呼ばれる。実際の削除を実行する
+    -- 確認ダイアログで"y"が押されたときに呼ばれる。実際の削除を実行する。
+    -- rmの成否によらず常に再読み込みする（削除操作中にディレクトリごと消えている
+    -- 場合など、一覧を現状に合わせて検証し直す必要があるため）。rmが失敗した場合の
+    -- メッセージは、再読み込みが成功した場合（＝ディレクトリ自体は生きている）に
+    -- 表示するフォールバックとしてinstructionに乗せる。再読み込み自体が失敗した
+    -- 場合は、そのエラーの方が実情を表すため優先される
     Invoker.commands.delete = function(args, state)
         local pane = ctx.current_pane(state)
         local target = args.target
         local quoted = shell_quote(join_path(pane.cwd, target.name))
         local cmd = target.is_dir and ("rm -r " .. quoted) or ("rm " .. quoted)
-        if fs.run(cmd) == 0 then
-            state.message = ""
-            pane.needs_reload = true
-        else
-            state.message = '"' .. target.name .. '" の削除に失敗しました'
+        local instruction = { reload = true }
+        if fs.run(cmd) ~= 0 then
+            instruction.fallback_message = '"' .. target.name .. '" の削除に失敗しました'
         end
         ctx.set_current_screen(args.previous_screen)
+        return instruction
     end
 
     -- 確認ダイアログで"n"/escapeが押されたときに呼ばれる。何もせず呼び出し元のスクリーンへ戻る
@@ -219,9 +212,9 @@ function Commands.register(ctx)
                 open_file(pane.cwd, f)
             end
         elseif f.name == ".." then
-            go_to_parent(state)
+            return go_to_parent(state)
         else
-            enter_directory(state, join_path(pane.cwd, f.name), nil)
+            return enter_directory(state, join_path(pane.cwd, f.name), nil)
         end
     end
 end

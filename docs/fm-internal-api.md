@@ -42,9 +42,16 @@ local app_state = {
 | `state.panes[N].search_query` | string | 検索文字列。空文字なら絞り込みなし。ディレクトリ移動時に空文字へリセットされる |
 | `state.panes[N].all_files` | table | `fs.list`の戻り値の先頭に`..`エントリを加えた、フィルタ適用前の生の一覧 |
 | `state.panes[N].files` | table | `all_files`に`show_hidden`・`search_query`のフィルタを適用した一覧。`ListScreen:view`とカーソル移動系コマンドはこちらを見る |
-| `state.panes[N].needs_reload` | boolean | `true`なら`draw()`のデータ準備で`all_files`をディスクから再読み込みする。既定は`false` |
 | `state.active_pane` | number | 操作対象のペイン（`state.panes`のインデックス） |
 | `state.message` | string | エラー・通知メッセージ。空文字でなければ`ListScreen:view`がフッター行に通常のヘルプの代わりに表示する |
+
+`state`には「ファイルマネージャの永続的な状態」だけを置く。コマンド実行結果と
+しての「データ準備に対する今回限りの指示」（再読み込みが必要か、フォールバック
+メッセージがあるか等）は`state`に混ぜず、`Invoker.run`の戻り値
+（instruction。「コマンド登録」「コールバック」を参照）として`on_key`/`draw`へ
+明示的に受け渡す。これは意図的な設計判断で、`state`に一時的な指示を混ぜると、
+コマンドが増えるほど「どのフィールドが永続的な状態で、どれが一時的な指示か」が
+`state`を見ただけでは分からなくなっていくため。
 
 `refresh_files(pane)`（`fm.lua`内部関数）が`pane.all_files`から`pane.files`を
 再構築する（`show_hidden`・`search_query`の両方のフィルタを適用。`".."`はどちらの
@@ -52,14 +59,42 @@ local app_state = {
 場合は末尾に補正する。ディレクトリ読み込み時・`toggle_hidden`実行時・検索確定時に
 呼ばれる。すでに`pane`（`state.panes[N]`）を受け取っているので`state`自体は不要。
 
-`reload_if_needed(pane)`（`fm.lua`内部関数）が`pane.needs_reload`を見て、`true`
-なら`load_dir(pane.cwd)`で`pane.all_files`をディスクから再読み込みし、
-`refresh_files(pane)`を呼んでから`pane.needs_reload`を`false`に戻す。`draw()`から
-呼ばれる「データ準備」の一部（`docs/fm-interface-design.md`の「データ準備」を参照）。
-`delete`コマンドのように、コマンド自体はディスクを変更するだけで`needs_reload`を
-立てるにとどめ、実際の再読み込みは次の`draw()`まで遅延させる（`enter_directory`の
-ような、コマンド自身が新しいディレクトリのデータを直接必要とするナビゲーション系
-とは扱いが異なる。詳細は「コマンド登録」を参照）。
+`load_pane_files(pane, state, fallback_message)`（`fm.lua`内部関数）が
+`load_dir(pane.cwd)`で`pane.all_files`をディスクから読み込み、
+`refresh_files(pane)`で`pane.files`を再構築する。読み込みに失敗した場合は
+`pane.cwd`を変更せずに維持し、`pane.all_files`を空にした上で`state.message`に
+`"error: " .. err`をセットする。成功した場合は`state.message`を
+`fallback_message`（省略時は空文字）にする。
+
+ファイルシステムは他プロセスからも操作されうる外部の状態であり、この失敗は
+「ディレクトリ移動時」に限らず一覧の再取得が発生するあらゆるタイミングで
+起こりうる一般的な現象として扱う。専用のエラー画面や確認ダイアログは設けず、
+通常の一覧画面のまま（一覧は空、フッターにメッセージ）で継続する。カレント
+ディレクトリ自体が削除された場合も同様で、ユーザーが親ディレクトリへ移動する
+操作（`backspace`）を繰り返せば、いずれ生きているディレクトリに到達して
+自然に回復する。`on_init`・`reload`のどちらもこの関数を経由するため、
+挙動は統一されている。
+
+`reload(pane, state, instruction)`（`fm.lua`内部関数）が`load_pane_files(pane, state,
+instruction.fallback_message)`を呼ぶ。続けて`instruction.cursor_name`が`nil`で
+なければ、それに応じてカーソル位置を決め直す（`false`なら先頭、文字列ならその
+名前の要素）。`prepare_data`から`instruction.reload`が`true`の場合にのみ呼ばれる
+（詳細は「コールバック」の`prepare_data`を参照）。
+
+`delete`・`enter_directory`（`go_to_parent`/`open_selected`によるディレクトリ移動を
+含む）のいずれも、ディスクの読み込みそのものは行わず、戻り値のinstructionで
+`reload = true`（と、`enter_directory`の場合は`cursor_name`、`delete`の場合は
+`fallback_message`）を伝えるだけにとどめ、実際の再読み込み・カーソル配置・
+メッセージ確定は次の`draw()`まで遅延させる（詳細は「コマンド登録」を参照）。
+`delete`が常に`reload = true`を返すのは、`rm`の成否によらず一覧を現状に合わせて
+検証し直すため（確認ダイアログで"y"を押す前にディレクトリ自体が外部から
+削除されているケースでも、古い一覧が残り続けず、実際のエラーが表示される）。
+
+これにより、`newdir`が読み込めない場合のエラー検知も次の`draw()`まで遅延する点に注意
+（`pane.cwd`自体は`enter_directory`の時点で即座に書き換わるが、`load_pane_files`が
+失敗時に`pane.cwd`を変更しない設計のため、次の再読み込み以降は移動先のcwdで
+エラー表示が続く。誤った移動先に留まりたくない場合は、ユーザー自身が
+`backspace`でさらに移動して回復する）。
 
 `current_pane(state)`（`fm.lua`内部関数）が`state.panes[state.active_pane]`を返す。
 ナビゲーション層・コマンド定義層は、呼び出し時に`state`を渡してこれを経由して
@@ -137,9 +172,8 @@ local app_state = {
 ## コマンド登録（`lua/commands.lua`）
 
 コマンドの実装本体は`lua/commands.lua`の`Commands`モジュールに分離されている。
-ディレクトリ移動（`enter_directory`/`go_to_parent`）・ファイルを開く処理
-（`open_file`/`open_with_command`とその拡張子判定）・パス操作のヘルパー
-（`join_path`/`parent_dir`/`last_segment`/`find_index_by_name`）・拡張子ごとの
+ファイルを開く処理（`open_file`/`open_with_command`とその拡張子判定）・
+パス操作のヘルパー（`join_path`/`parent_dir`/`last_segment`）・拡張子ごとの
 コマンド定義（`config.load().associations`）は、いずれも`on_init`/`on_key`から
 直接使われることがなく、`Invoker`経由のコマンド実行でしか使われないため、
 `commands.lua`側に閉じている（`fm.lua`には残していない）。
@@ -159,17 +193,23 @@ local app_state = {
 |---|---|
 | `current_pane` | `(state)`を受け取り、操作対象のペインを返す関数 |
 | `refresh_files` | `(pane)`を受け取り、`pane.all_files`から`pane.files`を再構築する関数 |
-| `load_dir` | `(path)`を受け取り、`list, err`を返す関数。ディレクトリの一覧を読み込む |
 | `get_current_screen` / `set_current_screen` | アクティブなスクリーンの参照・切り替え関数 |
 | `list_screen` / `grid_screen` | `ListScreen`/`GridScreen`のインスタンス |
 | `ConfirmDeleteScreen` | `ConfirmDeleteScreen`モジュール |
 
 `enter_directory`/`go_to_parent`は`commands.lua`内で`Commands.register(ctx)`の
-ローカル関数として定義され、`ctx.load_dir`/`ctx.current_pane`/`ctx.refresh_files`
-を使って実装されている（`state`は引数で明示的に受け取る）。
+ローカル関数として定義されているが、ディスクの読み込みは行わない。
+`enter_directory(state, newdir, cursor_name)`は`ctx.current_pane(state)`で
+取得したペインの`cwd`・`search_query`を書き換えるだけにとどめ、
+`{ reload = true, cursor_name = cursor_name or false }`という
+instructionテーブルを返す。`pane.all_files`の再読み込みとカーソルの実配置は
+`fm.lua`の`reload`（次の`draw()`のデータ準備）に委ねる。`cursor_name`が`nil`の
+場合は`instruction.cursor_name`に`false`を入れる（`nil`のままだと「カーソルには
+触れない」という別の意味になってしまうため。詳細は「状態」の`reload`を参照）。
 
-登録されるコマンドはすべて`function(args, state)`のシグネチャを持つ
-（`Invoker.run`が呼び出し時に渡す）。以下は各コマンドの動作。
+登録されるコマンドはすべて`function(args, state)`のシグネチャを持ち
+（`Invoker.run`が呼び出し時に渡す）、戻り値としてinstructionテーブル
+（データ準備への指示。`nil`の場合は「指示なし」）を返せる。以下は各コマンドの動作。
 
 | コマンド名 | 動作 |
 |---|---|
@@ -179,7 +219,7 @@ local app_state = {
 | `open_selected` | カーソル位置がディレクトリなら、そこに移動する（`..`の場合は`go_to_parent`相当）。ファイルなら、拡張子に対応するコマンド（`associations`）が定義されていればそれを、なければ`open_file`でファイルを開く |
 | `toggle_hidden` | `show_hidden`を反転し、`refresh_files`で`files`を再構築する |
 | `confirm_delete` | カーソル位置の要素（`".."`は対象外）について、現在のスクリーンを`previous_screen`として渡し`ConfirmDeleteScreen`へ切り替える |
-| `delete` | `args.target`を`fs.run("rm ...")`（ディレクトリは`rm -r`）で削除する。成功時は`state.message`を空にして`pane.needs_reload`を`true`にする（実際の再読み込みは次の`draw()`のデータ準備で行われる）。失敗時はエラーメッセージを`state.message`にセットする。いずれの場合も`args.previous_screen`へ戻す |
+| `delete` | `args.target`を`fs.run("rm ...")`（ディレクトリは`rm -r`）で削除する。成否によらず常に`{ reload = true }`を返す。失敗時はそこに`fallback_message`として削除失敗のメッセージを加える（再読み込みが成功すればこれが表示され、再読み込み自体が失敗すればそちらのエラーが優先される）。いずれの場合も`args.previous_screen`へ戻す |
 | `cancel` | 何もせず`args.previous_screen`へ戻す |
 | `toggle_layout` | `ListScreen`と`GridScreen`を切り替える |
 | `search` | `args.query`を`pane.search_query`にセットし、`refresh_files`で`files`を再構築する |
@@ -219,35 +259,51 @@ local app_state = {
 Rust側（`lua_bridge.rs`）が呼び出す唯一の入口。`fm-interface-design.md`の
 「メインループとの対応」で定義した構造をそのまま実装している。
 
-### `draw(state)`
+### `draw(state, instruction)`
 
-- 引数: `state`（`app_state`）
+- 引数: `state`（`app_state`）, `instruction`（省略可。直前に実行したコマンドの
+  戻り値。「コマンド登録」を参照）
 - 戻り値: なし
-- 動作: `screen.get_size()`で`state.display`を更新し、`prepare_data(state)`で
-  データ準備（`docs/fm-interface-design.md`の「データ準備」を参照）を行った上で、
-  `screen.clear()`した上で`get_current_screen():view(state)`を呼ぶ
-- 呼び出し元: `on_init`, `on_key`（いずれも`app_state`を渡す）
+- 動作: `screen.get_size()`で`state.display`を更新し、`prepare_data(state,
+  instruction)`でデータ準備（`docs/fm-interface-design.md`の「データ準備」を参照）
+  を行った上で、`screen.clear()`した上で`get_current_screen():view(state)`を呼ぶ
+- 呼び出し元: `on_init`（`instruction`省略）, `on_key`（`Invoker.run`の戻り値を渡す）
 
-### `prepare_data(state)`
+### `prepare_data(state, instruction)`
 
-- 引数: `state`（`app_state`）
+- 引数: `state`（`app_state`）, `instruction`（`nil`の場合は何もしない）
 - 戻り値: なし
-- 動作: `view`呼び出し前に必要な、表示用データの整形をまとめる関数。現状は
-  `reload_if_needed(current_pane(state))`（`needs_reload`に応じた再読み込み）
-  のみを行うが、今後この種の処理が増えた場合はここに追加していく
+- 動作: `view`呼び出し前に必要な、表示用データの整形をまとめる関数。
+  `instruction.reload`が`true`なら`reload(current_pane(state), state,
+  instruction)`を呼ぶ。`instruction`は`state`とは別の、コマンド実行結果としての
+  一時的な指示を伝えるための経路（詳細は「状態」の`state`と`instruction`の
+  役割分担についての説明を参照）。今後コマンドが増えるにつれ、指示の種類が
+  増えた場合はここに追加していく
 - 呼び出し元: `draw`
+
+### `on_init()`
+
+- 引数: なし
+- 戻り値: なし
+- 動作: `load_pane_files(current_pane(app_state), app_state)`でカレントディレクトリの
+  一覧を読み込んだ上で（失敗時の挙動は「状態」の`load_pane_files`を参照）、
+  `draw(app_state)`を呼ぶ（`instruction`は渡さない＝`nil`）。`instruction.reload`に
+  応じた`reload`経由の再読み込みと違い、常に読み込みを行う
+- 呼び出し元: Rust側（起動時に1回）
 
 ### `on_key(key)`
 
 1. `awaiting_search`（行入力の結果待ちかどうかを示すモジュールレベルの変数）が`true`
    なら、`key`は通常のキー名ではなく確定した検索文字列そのものとして扱う（詳細は
-   「検索（行入力モード）」を参照）。処理後は`draw(app_state)`を呼び`true`を返す
+   「検索（行入力モード）」を参照）。`Invoker.run("search", ...)`の戻り値を
+   `instruction`として`draw(app_state, instruction)`を呼び`true`を返す
 2. `get_current_screen():command_mapper(key)`で`command_name`を決定する
 3. `command_name == "quit"`なら`false`を返して終了（`Invoker`を経由しない）
 4. `command_name == "search"`なら`awaiting_search`を`true`にし、
    `terminal.request_line_input(...)`を呼んで`true`を返す（`Invoker`を経由しない）
-5. `command_name`があれば`Invoker.run(command_name, args, app_state)`を呼ぶ
-6. `draw(app_state)`を呼ぶ
+5. `command_name`があれば`Invoker.run(command_name, args, app_state)`を呼び、
+   その戻り値を`instruction`として保持する
+6. `draw(app_state, instruction)`を呼ぶ
 7. `true`を返す
 
 ## 検索（行入力モード）
@@ -271,7 +327,3 @@ Rust側（`lua_bridge.rs`）が呼び出す唯一の入口。`fm-interface-desig
    `key == "escape"`でなければ`Invoker.run("search", { query = key }, app_state)`を呼ぶ
    （空文字で確定した場合は絞り込みが解除される）
 5. `awaiting_search`を`false`に戻し、`draw(app_state)`を呼ぶ
-
-## 例外: on_init の直接呼び出し
-
-`on_init`は、初回読み込みに失敗した場合のエラー表示のために、`draw()`を経由せず`screen.clear`/`screen.write`を直接呼び、`load_dir`（ナビゲーション層の内部関数）も直接呼び出している。これは上記のAPIではなく、起動失敗時のみの特別な経路。

@@ -375,6 +375,25 @@ describe("fm", function()
         assert.is_not_nil(screen.writes[9]:find("q:終了", 1, true))
     end)
 
+    it("確認中にカレントディレクトリごと削除された場合、rmも失敗するが一覧は空になり実情のエラーが表示される", function()
+        on_init()
+        on_key("j")
+        on_key("j") -- カーソルを"a.txt"に合わせる
+        on_key("d")
+        -- "y"を押す前に、カレントディレクトリごと外部から削除されたことを模す
+        _G.fs.exit_code = 1
+        _G.fs.list = function() return nil, "not found" end
+        on_key("y")
+        local shows_stale_listing = false
+        for _, text in pairs(screen.writes) do
+            if text:find("a.txt", 1, true) then
+                shows_stale_listing = true
+            end
+        end
+        assert.is_false(shows_stale_listing)
+        assert.is_not_nil(screen.writes[9]:find("error: not found", 1, true))
+    end)
+
     it("'..'の上でdキーを押しても削除確認は表示されない", function()
         on_init()
         on_key("d")
@@ -509,10 +528,20 @@ describe("fm", function()
         assert.is_not_nil(screen.writes[1]:find("c.txt", 1, true))
     end)
 
-    it("fs.listがエラーを返す場合、エラーメッセージを描画する", function()
+    it("fs.listがエラーを返す場合、cwdは維持したまま一覧画面のフッターにエラーメッセージを表示する", function()
         _G.fs.cwd = function() return "/missing" end
         dofile("lua/fm.lua")
         on_init()
-        assert.equals("error: not found", screen.writes[0])
+        assert.equals("fm  /missing", screen.writes[0])
+        assert.is_not_nil(screen.writes[9]:find("error: not found", 1, true))
+    end)
+
+    it("fs.listがエラーを返す場合、backspaceで親ディレクトリへ移動すれば回復する", function()
+        _G.fs.cwd = function() return "/missing" end
+        dofile("lua/fm.lua")
+        on_init()
+        on_key("backspace")
+        assert.equals("fm  /", screen.writes[0])
+        assert.is_nil(screen.writes[9]:find("error:", 1, true))
     end)
 end)
