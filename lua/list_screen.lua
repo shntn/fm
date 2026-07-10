@@ -73,6 +73,7 @@ function ListScreen:view(data) -- luacheck: ignore
     local list_h = data.display.height - 2 -- ヘッダー1行 + フッター1行
     local offset = page_offset(pane.cursor, list_h)
 
+    screen.clear()
     screen.write(0, 0, "fm  " .. pane.cwd)
 
     for r = 0, list_h - 1 do

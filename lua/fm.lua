@@ -37,15 +37,42 @@ end
 local list_screen = ListScreen.new()
 local grid_screen = GridScreen.new()
 
--- 今アクティブなスクリーンのインスタンス
-local current_screen = list_screen
+-- 標準画面(一覧などの、割り込みが何もない時に表示する画面)
+local default_screen = list_screen
+-- push_screenで置かれた「次に見せたい割り込み画面」。select_screenが消費するまで保持する
+local pushed_screen = nil
+-- 今アクティブなスクリーンのインスタンス。select_screenでのみ更新する
+local current_screen = default_screen
 
 local function get_current_screen()
     return current_screen
 end
 
-local function set_current_screen(screen_instance)
-    current_screen = screen_instance
+-- 次に見せたい割り込み画面(確認ダイアログなど)を置く
+local function push_screen(screen_instance)
+    pushed_screen = screen_instance
+end
+
+local function get_default_screen()
+    return default_screen
+end
+
+-- 標準画面自体を切り替える(一覧⇔2段組など、割り込みとは無関係な表示切り替えに使う)
+local function set_default_screen(screen_instance)
+    default_screen = screen_instance
+end
+
+-- pushed_screenがあればそれをcurrent_screenとして採用し(1回で消費する)、
+-- なければdefault_screenを採用する。コマンドを実行した直後にのみ呼ぶこと
+-- （何もコマンドが実行されていないのに呼ぶと、割り込み画面がpushed_screen消費済みの
+-- まま誤ってdefault_screenに戻ってしまう）
+local function select_screen()
+    if pushed_screen then
+        current_screen = pushed_screen
+        pushed_screen = nil
+    else
+        current_screen = default_screen
+    end
 end
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
@@ -171,8 +198,9 @@ end
 
 Commands.register({
     current_pane = current_pane,
-    get_current_screen = get_current_screen,
-    set_current_screen = set_current_screen,
+    push_screen = push_screen,
+    get_default_screen = get_default_screen,
+    set_default_screen = set_default_screen,
     list_screen = list_screen,
     grid_screen = grid_screen,
     ConfirmDeleteScreen = ConfirmDeleteScreen,
@@ -192,7 +220,6 @@ local function draw(state, instruction)
     state.display.width = width
     state.display.height = height
     prepare_data(state, instruction)
-    screen.clear()
     get_current_screen():view(state)
 end
 
@@ -211,6 +238,7 @@ function on_key(key)
     local instruction = nil
     if command_name then
         instruction = Invoker.run(command_name, args, app_state)
+        select_screen()
     end
     draw(app_state, instruction)
     return true

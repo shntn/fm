@@ -90,11 +90,12 @@ end
 -- 引数として明示的に受け取る形にしてある
 --
 -- ctx:
---   current_pane       (state) -> 操作対象のペインを返す関数
---   get_current_screen アクティブなスクリーンを返す関数
---   set_current_screen アクティブなスクリーンを切り替える関数
---   list_screen        ListScreenのインスタンス
---   grid_screen        GridScreenのインスタンス
+--   current_pane        (state) -> 操作対象のペインを返す関数
+--   push_screen         次に見せたい割り込み画面(確認ダイアログなど)を置く関数
+--   get_default_screen  標準画面(一覧などの、割り込みがない時に表示する画面)を返す関数
+--   set_default_screen  標準画面自体を切り替える関数(一覧⇔2段組など)
+--   list_screen         ListScreenのインスタンス
+--   grid_screen         GridScreenのインスタンス
 --   ConfirmDeleteScreen ConfirmDeleteScreenモジュール
 --   ConfirmFindScreen   ConfirmFindScreenモジュール
 function Commands.register(ctx)
@@ -150,15 +151,14 @@ function Commands.register(ctx)
         return { reload = true }
     end
 
-    -- カーソル位置の要素の削除を確認するスクリーンに切り替える（".."は対象外）
-    -- 呼び出し元のスクリーン(一覧/2段組)を渡し、下敷きの描画とy/n後の復帰先に使う
+    -- カーソル位置の要素の削除を確認する画面をpushする（".."は対象外）
     Invoker.commands.confirm_delete = function(_args, state)
         local pane = ctx.current_pane(state)
         local f = pane.files[pane.cursor]
         if not f or f.name == ".." then
             return
         end
-        ctx.set_current_screen(ctx.ConfirmDeleteScreen.new(f, ctx.get_current_screen()))
+        ctx.push_screen(ctx.ConfirmDeleteScreen.new(f))
     end
 
     -- 確認ダイアログで"y"が押されたときに呼ばれる。実際の削除を実行する。
@@ -166,7 +166,8 @@ function Commands.register(ctx)
     -- 場合など、一覧を現状に合わせて検証し直す必要があるため）。rmが失敗した場合の
     -- メッセージは、再読み込みが成功した場合（＝ディレクトリ自体は生きている）に
     -- 表示するフォールバックとしてinstructionに乗せる。再読み込み自体が失敗した
-    -- 場合は、そのエラーの方が実情を表すため優先される
+    -- 場合は、そのエラーの方が実情を表すため優先される。何もpushしないため、
+    -- このコマンドの実行後は標準画面(一覧/2段組)に戻る
     Invoker.commands.delete = function(args, state)
         local pane = ctx.current_pane(state)
         local target = args.target
@@ -176,39 +177,37 @@ function Commands.register(ctx)
         if fs.run(cmd) ~= 0 then
             instruction.fallback_message = '"' .. target.name .. '" の削除に失敗しました'
         end
-        ctx.set_current_screen(args.previous_screen)
         return instruction
     end
 
-    -- 確認ダイアログで"n"/escapeが押されたときに呼ばれる。何もせず呼び出し元のスクリーンへ戻る
-    Invoker.commands.cancel = function(args, _state)
-        ctx.set_current_screen(args.previous_screen)
+    -- 確認ダイアログで"n"/escapeが押されたときに呼ばれる。何もpushしないため
+    -- 標準画面(一覧/2段組)に戻る
+    Invoker.commands.cancel = function(_args, _state)
     end
 
-    -- '/'が押されたときに呼ばれる。検索文字列を入力するスクリーンに切り替え、
+    -- '/'が押されたときに呼ばれる。検索文字列を入力する画面をpushし、
     -- Rust側に行入力(read_line)を要求する。実際の絞り込みは、入力が確定/
     -- キャンセルされた後にConfirmFindScreen経由で呼ばれるsearch/cancelが行う
     Invoker.commands.confirm_find = function(_args, state)
-        local previous_screen = ctx.get_current_screen()
-        ctx.set_current_screen(ctx.ConfirmFindScreen.new(previous_screen))
+        ctx.push_screen(ctx.ConfirmFindScreen.new())
         terminal.request_line_input(0, state.display.height - 1, state.display.width, "/")
     end
 
     -- 検索文字列が確定した後に呼ばれる。表示するファイル一覧の内容が変わる操作
-    -- なので、toggle_hiddenと同様に再読み込みする。呼び出し元のスクリーンへ戻る
+    -- なので、toggle_hiddenと同様に再読み込みする。何もpushしないため
+    -- 標準画面(一覧/2段組)に戻る
     Invoker.commands.search = function(args, state)
         local pane = ctx.current_pane(state)
         pane.search_query = args.query or ""
-        ctx.set_current_screen(args.previous_screen)
         return { reload = true }
     end
 
-    -- 一覧表示(1列)と2段組表示を切り替える
+    -- 一覧表示(1列)と2段組表示を切り替える。標準画面自体の切り替えなのでdefault_screenを操作する
     Invoker.commands.toggle_layout = function(_args, _state)
-        if ctx.get_current_screen() == ctx.list_screen then
-            ctx.set_current_screen(ctx.grid_screen)
+        if ctx.get_default_screen() == ctx.list_screen then
+            ctx.set_default_screen(ctx.grid_screen)
         else
-            ctx.set_current_screen(ctx.list_screen)
+            ctx.set_default_screen(ctx.list_screen)
         end
     end
 

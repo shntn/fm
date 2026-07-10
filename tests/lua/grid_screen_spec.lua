@@ -3,6 +3,7 @@ local GridScreen = require("grid_screen")
 
 local function make_screen(width, height)
     local mock = { writes = {} }
+    mock.clear = function() end
     mock.write = function(_, y, text) mock.writes[y] = text end
     mock.get_size = function() return width, height end
     return mock
