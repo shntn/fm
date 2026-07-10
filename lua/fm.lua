@@ -2,6 +2,7 @@ local Invoker = require("invoker")
 local ListScreen = require("list_screen")
 local GridScreen = require("grid_screen")
 local ConfirmDeleteScreen = require("confirm_delete_screen")
+local ConfirmFindScreen = require("confirm_find_screen")
 local Commands = require("commands")
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
@@ -170,12 +171,12 @@ end
 
 Commands.register({
     current_pane = current_pane,
-    refresh_files = refresh_files,
     get_current_screen = get_current_screen,
     set_current_screen = set_current_screen,
     list_screen = list_screen,
     grid_screen = grid_screen,
     ConfirmDeleteScreen = ConfirmDeleteScreen,
+    ConfirmFindScreen = ConfirmFindScreen,
 })
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
@@ -201,30 +202,11 @@ function on_init()
     draw(app_state)
 end
 
--- 直前のon_key呼び出しでterminal.request_line_inputを呼び、行入力の結果待ちかどうか
-local awaiting_search = false
-
 -- キー処理
 function on_key(key)
-    if awaiting_search then
-        awaiting_search = false
-        local instruction = nil
-        if key ~= "escape" then
-            -- keyは1文字のキー名ではなく、確定した検索文字列そのもの
-            instruction = Invoker.run("search", { query = key }, app_state)
-        end
-        draw(app_state, instruction)
-        return true
-    end
-
     local command_name, args = get_current_screen():command_mapper(key)
     if command_name == "quit" then
         return false
-    end
-    if command_name == "search" then
-        awaiting_search = true
-        terminal.request_line_input(0, app_state.display.height - 1, app_state.display.width, "/")
-        return true
     end
     local instruction = nil
     if command_name then

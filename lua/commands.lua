@@ -91,12 +91,12 @@ end
 --
 -- ctx:
 --   current_pane       (state) -> 操作対象のペインを返す関数
---   refresh_files      (pane) -> pane.all_filesからpane.filesを再構築する関数
 --   get_current_screen アクティブなスクリーンを返す関数
 --   set_current_screen アクティブなスクリーンを切り替える関数
 --   list_screen        ListScreenのインスタンス
 --   grid_screen        GridScreenのインスタンス
 --   ConfirmDeleteScreen ConfirmDeleteScreenモジュール
+--   ConfirmFindScreen   ConfirmFindScreenモジュール
 function Commands.register(ctx)
     -- 拡張子ごとに開くコマンドを定義する。$C=拡張子ありファイル名、$X=拡張子なしファイル名、$P=カレントディレクトリのフルパス
     -- config.load()が返す設定ファイル(またはその既定値)のassociationsセクションから読み込む
@@ -140,10 +140,14 @@ function Commands.register(ctx)
         return go_to_parent(state)
     end
 
+    -- 表示するファイル一覧の内容が変わる操作なので、他プロセスによる変更を
+    -- 取りこぼさないよう再読み込みする（マルチタスクOSでは、ファイル一覧に対する
+    -- 操作のたびにディスクの現況を反映すべき。ただしカーソル移動のような操作では
+    -- 過剰なので対象外）
     Invoker.commands.toggle_hidden = function(_args, state)
         local pane = ctx.current_pane(state)
         pane.show_hidden = not pane.show_hidden
-        ctx.refresh_files(pane)
+        return { reload = true }
     end
 
     -- カーソル位置の要素の削除を確認するスクリーンに切り替える（".."は対象外）
@@ -181,11 +185,22 @@ function Commands.register(ctx)
         ctx.set_current_screen(args.previous_screen)
     end
 
-    -- 検索文字列が確定した後に呼ばれる。ファイル一覧を絞り込む
+    -- '/'が押されたときに呼ばれる。検索文字列を入力するスクリーンに切り替え、
+    -- Rust側に行入力(read_line)を要求する。実際の絞り込みは、入力が確定/
+    -- キャンセルされた後にConfirmFindScreen経由で呼ばれるsearch/cancelが行う
+    Invoker.commands.confirm_find = function(_args, state)
+        local previous_screen = ctx.get_current_screen()
+        ctx.set_current_screen(ctx.ConfirmFindScreen.new(previous_screen))
+        terminal.request_line_input(0, state.display.height - 1, state.display.width, "/")
+    end
+
+    -- 検索文字列が確定した後に呼ばれる。表示するファイル一覧の内容が変わる操作
+    -- なので、toggle_hiddenと同様に再読み込みする。呼び出し元のスクリーンへ戻る
     Invoker.commands.search = function(args, state)
         local pane = ctx.current_pane(state)
         pane.search_query = args.query or ""
-        ctx.refresh_files(pane)
+        ctx.set_current_screen(args.previous_screen)
+        return { reload = true }
     end
 
     -- 一覧表示(1列)と2段組表示を切り替える

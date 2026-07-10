@@ -113,7 +113,7 @@ function ListScreen:command_mapper(key) -- luacheck: ignore
     elseif key == "v" then
         return "toggle_layout"
     elseif key == "/" then
-        return "search"
+        return "confirm_find"
     elseif key == "q" or key == "escape" then
         return "quit"
     end

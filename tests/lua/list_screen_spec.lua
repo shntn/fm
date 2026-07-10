@@ -173,9 +173,9 @@ describe("ListScreen:command_mapper", function()
         assert.equals("toggle_layout", view:command_mapper("v"))
     end)
 
-    it("'/'はsearchを返す", function()
+    it("'/'はconfirm_findを返す", function()
         local view = ListScreen.new()
-        assert.equals("search", view:command_mapper("/"))
+        assert.equals("confirm_find", view:command_mapper("/"))
     end)
 
     it("q/escapeはquitを返す", function()
