@@ -1,6 +1,7 @@
 local Screen = require("screen")
 local template = require("template")
 local utf8width = require("utf8width")
+local path = require("path")
 
 local NAME_WIDTH = 40
 
@@ -16,26 +17,17 @@ function ListScreen.new()
     return setmetatable(self, ListScreen)
 end
 
--- .gitignoreのようなドットファイルは拡張子なし(nil)として扱う
-local function file_extension(name)
-    local base, ext = name:match("^(.+)%.([^.]+)$")
-    if base and base ~= "" then
-        return ext
-    end
-    return nil
-end
-
 -- 切り詰め後も拡張子から種類が分かるよう、拡張子は残して手前だけ省略する
 local function truncate_name(name, max_width)
     if utf8width.width(name) <= max_width then
         return name
     end
-    local ext = file_extension(name)
+    local ext = path.extension(name)
     if not ext then
         return utf8width.truncate(name, max_width)
     end
     local suffix = "." .. ext
-    local base = name:sub(1, #name - #ext - 1)
+    local base = path.strip_extension(name)
     local budget = math.max(max_width - utf8width.width(suffix), 0)
     return utf8width.truncate(base, budget) .. suffix
 end

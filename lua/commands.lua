@@ -1,49 +1,14 @@
 local Invoker = require("invoker")
 local config = require("config")
+local path = require("path")
 
 local Commands = {}
-
-local function parent_dir(path)
-    local base = path:match("^(.*)/[^/]+$")
-    if not base or base == "" then
-        return "/"
-    end
-    return base
-end
-
-local function last_segment(path)
-    return path:match("([^/]+)$")
-end
-
-local function join_path(base, name)
-    if base == "/" then
-        return "/" .. name
-    end
-    return base .. "/" .. name
-end
-
--- .gitignoreのようなドットファイルは拡張子なし(nil)として扱う
-local function file_extension(name)
-    local base, ext = name:match("^(.+)%.([^.]+)$")
-    if base and base ~= "" then
-        return ext
-    end
-    return nil
-end
-
-local function strip_extension(name)
-    local ext = file_extension(name)
-    if not ext then
-        return name
-    end
-    return name:sub(1, #name - #ext - 1)
-end
 
 -- シェルコマンドの引数として安全な形にpathをクォートする
 -- fs.run()に渡す文字列にファイル名を組み込む際は、必ずこれを経由すること
 -- （スペースや引用符を含むファイル名でコマンドが壊れる、または意図しないコマンド実行につながる）
-local function shell_quote(path)
-    return "'" .. path:gsub("'", "'\\''") .. "'"
+local function shell_quote(file_path)
+    return "'" .. file_path:gsub("'", "'\\''") .. "'"
 end
 
 local function expand_command(cmd, values)
@@ -57,13 +22,13 @@ local function expand_command(cmd, values)
 end
 
 -- grep -Iはバイナリファイルにマッチしない仕様を利用して判定する
-local function is_text_file(path)
-    return fs.run("grep -Iq '' " .. shell_quote(path)) == 0
+local function is_text_file(file_path)
+    return fs.run("grep -Iq '' " .. shell_quote(file_path)) == 0
 end
 
 local function open_file(cwd, f)
-    local quoted = shell_quote(join_path(cwd, f.name))
-    if f.size == 0 or is_text_file(join_path(cwd, f.name)) then
+    local quoted = shell_quote(path.join(cwd, f.name))
+    if f.size == 0 or is_text_file(path.join(cwd, f.name)) then
         fs.run("less " .. quoted)
     else
         fs.run("xxd " .. quoted .. " | less")
@@ -71,7 +36,7 @@ local function open_file(cwd, f)
 end
 
 local function open_with_command(cmd_template, cwd, f)
-    local values = { ["$C"] = f.name, ["$X"] = strip_extension(f.name), ["$P"] = cwd }
+    local values = { ["$C"] = f.name, ["$X"] = path.strip_extension(f.name), ["$P"] = cwd }
     fs.run(expand_command(cmd_template, values))
 end
 
@@ -112,7 +77,7 @@ function Commands.register(ctx)
 
     local function go_to_parent(state)
         local pane = ctx.current_pane(state)
-        return enter_directory(state, parent_dir(pane.cwd), last_segment(pane.cwd))
+        return enter_directory(state, path.parent_dir(pane.cwd), path.last_segment(pane.cwd))
     end
 
     Invoker.commands.cursor_down = function(_args, state)
@@ -162,7 +127,7 @@ function Commands.register(ctx)
     Invoker.commands.delete = function(args, state)
         local pane = ctx.current_pane(state)
         local target = args.target
-        local quoted = shell_quote(join_path(pane.cwd, target.name))
+        local quoted = shell_quote(path.join(pane.cwd, target.name))
         local cmd = target.is_dir and ("rm -r " .. quoted) or ("rm " .. quoted)
         local instruction = { reload = true }
         if fs.run(cmd) ~= 0 then
@@ -209,7 +174,7 @@ function Commands.register(ctx)
             return
         end
         if not f.is_dir then
-            local cmd_template = associations[file_extension(f.name)]
+            local cmd_template = associations[path.extension(f.name)]
             if cmd_template then
                 open_with_command(cmd_template, pane.cwd, f)
             else
@@ -218,7 +183,7 @@ function Commands.register(ctx)
         elseif f.name == ".." then
             return go_to_parent(state)
         else
-            return enter_directory(state, join_path(pane.cwd, f.name), nil)
+            return enter_directory(state, path.join(pane.cwd, f.name), nil)
         end
     end
 end
