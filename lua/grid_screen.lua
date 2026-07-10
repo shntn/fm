@@ -9,7 +9,7 @@ local COLUMN_WIDTH = 38
 local CURSOR_ON = "\27[7m"
 local CURSOR_OFF = "\27[0m"
 
--- ファイル一覧を2段組で表示するスクリーン。command_mapperはListScreenのものをそのまま継承する
+-- command_mapperはListScreenのものをそのまま継承する
 -- (カーソル移動・削除・隠しファイル切替などのキー操作は表示レイアウトに依存しないため)
 local GridScreen = setmetatable({}, { __index = ListScreen })
 GridScreen.__index = GridScreen
@@ -19,13 +19,11 @@ function GridScreen.new()
     return setmetatable(self, GridScreen)
 end
 
--- 名前の表示幅がmax_widthを超える場合、省略記号(…)に置き換える。ディレクトリは末尾に'/'を付ける
 local function display_name(f, max_width)
     local name = f.is_dir and (f.name .. "/") or f.name
     return utf8width.truncate(name, max_width)
 end
 
--- 1列分(indexが指すファイル、なければ空欄)の表示テキストを組み立てる
 local function column_text(pane, index)
     local f = pane.files[index]
     local text = template.render("{name:" .. COLUMN_WIDTH .. "}", {

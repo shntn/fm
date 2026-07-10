@@ -10,8 +10,7 @@ function ConfirmDeleteScreen.new(target)
     return setmetatable(self, ConfirmDeleteScreen)
 end
 
--- フッター行に確認メッセージを書く。画面幅いっぱいにパディングし、
--- 直前のフレームの表示が右側に残らないようにする
+-- 画面幅いっぱいにパディングし、直前のフレームの表示が右側に残らないようにする
 function ConfirmDeleteScreen:view(data)
     local message = '"' .. self.target.name .. '" を削除しますか？ (y/n)'
     screen.write(0, data.display.height - 1,

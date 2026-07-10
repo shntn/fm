@@ -3,7 +3,6 @@ local config = require("config")
 
 local Commands = {}
 
--- pathの親ディレクトリのパスを返す
 local function parent_dir(path)
     local base = path:match("^(.*)/[^/]+$")
     if not base or base == "" then
@@ -12,12 +11,10 @@ local function parent_dir(path)
     return base
 end
 
--- pathの末尾の要素名を返す
 local function last_segment(path)
     return path:match("([^/]+)$")
 end
 
--- dirとnameを結合したパスを返す。dirがルート"/"の場合に"//"にならないようにする
 local function join_path(base, name)
     if base == "/" then
         return "/" .. name
@@ -25,7 +22,7 @@ local function join_path(base, name)
     return base .. "/" .. name
 end
 
--- nameの拡張子を返す。拡張子がない場合（.gitignoreのようなドットファイルを含む）はnilを返す
+-- .gitignoreのようなドットファイルは拡張子なし(nil)として扱う
 local function file_extension(name)
     local base, ext = name:match("^(.+)%.([^.]+)$")
     if base and base ~= "" then
@@ -34,7 +31,6 @@ local function file_extension(name)
     return nil
 end
 
--- nameから拡張子を取り除いた部分を返す
 local function strip_extension(name)
     local ext = file_extension(name)
     if not ext then
@@ -50,7 +46,6 @@ local function shell_quote(path)
     return "'" .. path:gsub("'", "'\\''") .. "'"
 end
 
--- cmd内の$C/$X/$Pを、シェルクォートしたvaluesの値に置き換える
 local function expand_command(cmd, values)
     return (cmd:gsub("%$%a", function(token)
         local value = values[token]
@@ -61,12 +56,11 @@ local function expand_command(cmd, values)
     end))
 end
 
--- pathがテキストファイルならtrue、バイナリファイルならfalseを返す
+-- grep -Iはバイナリファイルにマッチしない仕様を利用して判定する
 local function is_text_file(path)
     return fs.run("grep -Iq '' " .. shell_quote(path)) == 0
 end
 
--- ファイルを開く。テキストファイルはlessで、バイナリファイルはダンプをlessで表示する
 local function open_file(cwd, f)
     local quoted = shell_quote(join_path(cwd, f.name))
     if f.size == 0 or is_text_file(join_path(cwd, f.name)) then
@@ -76,7 +70,6 @@ local function open_file(cwd, f)
     end
 end
 
--- 拡張子に対応するコマンドでファイルを開く
 local function open_with_command(cmd_template, cwd, f)
     local values = { ["$C"] = f.name, ["$X"] = strip_extension(f.name), ["$P"] = cwd }
     fs.run(expand_command(cmd_template, values))
@@ -117,7 +110,6 @@ function Commands.register(ctx)
         return { reload = true, cursor_name = cursor_name or false }
     end
 
-    -- 親ディレクトリへ移動する。戻った後は元いた子ディレクトリの位置にカーソルを合わせる
     local function go_to_parent(state)
         local pane = ctx.current_pane(state)
         return enter_directory(state, parent_dir(pane.cwd), last_segment(pane.cwd))
@@ -151,7 +143,6 @@ function Commands.register(ctx)
         return { reload = true }
     end
 
-    -- カーソル位置の要素の削除を確認する画面をpushする（".."は対象外）
     Invoker.commands.confirm_delete = function(_args, state)
         local pane = ctx.current_pane(state)
         local f = pane.files[pane.cursor]
@@ -202,7 +193,7 @@ function Commands.register(ctx)
         return { reload = true }
     end
 
-    -- 一覧表示(1列)と2段組表示を切り替える。標準画面自体の切り替えなのでdefault_screenを操作する
+    -- 標準画面自体の切り替えなのでdefault_screenを操作する(push_screenは使わない)
     Invoker.commands.toggle_layout = function(_args, _state)
         if ctx.get_default_screen() == ctx.list_screen then
             ctx.set_default_screen(ctx.grid_screen)
@@ -211,7 +202,6 @@ function Commands.register(ctx)
         end
     end
 
-    -- カーソル位置の要素を開く
     Invoker.commands.open_selected = function(_args, state)
         local pane = ctx.current_pane(state)
         local f = pane.files[pane.cursor]

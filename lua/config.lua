@@ -10,12 +10,11 @@ gz = "tar tzvf $P/$C | less"
 md = "glow -p $P/$C"
 ]]
 
--- 設定ファイルのパスを返す。FM_CONFIG環境変数があればそちらを優先する
 local function config_path()
     return os.getenv("FM_CONFIG") or (os.getenv("HOME") .. "/.config/fm/config.toml")
 end
 
--- 設定を読み込む。ファイルが存在しない、または不正なTOMLの場合は内蔵の既定値を使う
+-- toml.parseは不正なTOMLに対してnilを返すため、既定値へのフォールバックはparsedの真偽判定だけで済む
 function config.load()
     local text = fs.read_file(config_path())
     local parsed = text and toml.parse(text)

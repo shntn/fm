@@ -16,7 +16,7 @@ function ListScreen.new()
     return setmetatable(self, ListScreen)
 end
 
--- nameの拡張子を返す。拡張子がない場合（.gitignoreのようなドットファイルを含む）はnilを返す
+-- .gitignoreのようなドットファイルは拡張子なし(nil)として扱う
 local function file_extension(name)
     local base, ext = name:match("^(.+)%.([^.]+)$")
     if base and base ~= "" then
@@ -25,7 +25,7 @@ local function file_extension(name)
     return nil
 end
 
--- nameの表示幅がmax_widthを超える場合、拡張子は残したまま手前を省略記号(…)に置き換える
+-- 切り詰め後も拡張子から種類が分かるよう、拡張子は残して手前だけ省略する
 local function truncate_name(name, max_width)
     if utf8width.width(name) <= max_width then
         return name
@@ -55,7 +55,6 @@ local function format_size(bytes)
     return string.format("%.1f%s", value, units[unit_index])
 end
 
--- ファイル一覧表示用に、切り詰め・ディレクトリの'/'付与を行った名前を返す
 local function display_name(f)
     if f.is_dir then
         return truncate_name(f.name, NAME_WIDTH - 1) .. "/"

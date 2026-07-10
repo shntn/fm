@@ -29,7 +29,6 @@ local app_state = {
     message = "",
 }
 
--- 操作対象のペインを返す
 local function current_pane(state)
     return state.panes[state.active_pane]
 end
@@ -48,7 +47,6 @@ local function get_current_screen()
     return current_screen
 end
 
--- 次に見せたい割り込み画面(確認ダイアログなど)を置く
 local function push_screen(screen_instance)
     pushed_screen = screen_instance
 end
@@ -79,23 +77,19 @@ end
 -- ディレクトリナビゲーション
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 
--- ファイル一覧を読み込む
 local function load_dir(path)
     local list, err = fs.list(path)
     if err then
         return nil, err
     end
-    -- ディレクトリを先に、その中でアルファベット順にソート
     table.sort(list, function(a, b)
         if a.is_dir ~= b.is_dir then return a.is_dir end
         return a.name < b.name
     end)
-    -- 先頭に .. を追加
     table.insert(list, 1, { name = "..", is_dir = true, size = 0, modified = "", perm = "rwxr-xr-x" })
     return list
 end
 
--- nameがsearch_queryを含むか判定する（大小文字を区別しない部分一致）。空文字は常にマッチする
 local function matches_search(name, search_query)
     if search_query == "" then
         return true
@@ -103,8 +97,6 @@ local function matches_search(name, search_query)
     return name:lower():find(search_query:lower(), 1, true) ~= nil
 end
 
--- all_filesに、show_hidden・search_queryに応じた絞り込みを適用したものを返す
--- ".."はどちらのフィルタの対象にもせず、常に含める
 local function build_visible_files(all_files, show_hidden, search_query)
     local filtered = {}
     for _, f in ipairs(all_files) do
@@ -117,7 +109,6 @@ local function build_visible_files(all_files, show_hidden, search_query)
     return filtered
 end
 
--- ペインのall_filesからfilesを再構築し、カーソルが範囲外になっていれば補正する
 local function refresh_files(pane)
     pane.files = build_visible_files(pane.all_files, pane.show_hidden, pane.search_query)
     if pane.cursor > #pane.files then
@@ -125,7 +116,6 @@ local function refresh_files(pane)
     end
 end
 
--- リストの中からnameと一致する要素のインデックスを探す
 local function find_index_by_name(list, name)
     for i, item in ipairs(list) do
         if item.name == name then
@@ -211,7 +201,6 @@ Commands.register({
 -- コールバック
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 
--- 画面描画
 -- instruction: 直前に実行したコマンドの戻り値（Invoker.run参照）。データ準備に
 -- 何を伝えるかはprepare_dataが解釈する。on_initからの呼び出しなど、直前に
 -- コマンドを実行していない場合は省略してよい（nilとして扱われる）
@@ -223,13 +212,11 @@ local function draw(state, instruction)
     get_current_screen():view(state)
 end
 
--- 初期化
 function on_init()
     load_pane_files(current_pane(app_state), app_state)
     draw(app_state)
 end
 
--- キー処理
 function on_key(key)
     local command_name, args = get_current_screen():command_mapper(key)
     if command_name == "quit" then
