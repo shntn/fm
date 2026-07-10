@@ -84,9 +84,9 @@ end
 --
 -- ctx:
 --   current_pane        (state) -> 操作対象のペインを返す関数
---   push_screen         次に見せたい割り込み画面(確認ダイアログなど)を置く関数
---   get_default_screen  標準画面(一覧などの、割り込みがない時に表示する画面)を返す関数
---   set_default_screen  標準画面自体を切り替える関数(一覧⇔2段組など)
+--   push_screen         (state, screen_instance) -> 次に見せたい割り込み画面(確認ダイアログなど)を置く関数
+--   get_default_screen  (state) -> 標準画面(一覧などの、割り込みがない時に表示する画面)を返す関数
+--   set_default_screen  (state, screen_instance) -> 標準画面自体を切り替える関数(一覧⇔2段組など)
 --   list_screen         ListScreenのインスタンス
 --   grid_screen         GridScreenのインスタンス
 --   ConfirmDeleteScreen ConfirmDeleteScreenモジュール
@@ -149,7 +149,7 @@ function Commands.register(ctx)
         if not f or f.name == ".." then
             return
         end
-        ctx.push_screen(ctx.ConfirmDeleteScreen.new(f))
+        ctx.push_screen(state, ctx.ConfirmDeleteScreen.new(f))
     end
 
     -- 確認ダイアログで"y"が押されたときに呼ばれる。実際の削除を実行する。
@@ -180,7 +180,7 @@ function Commands.register(ctx)
     -- Rust側に行入力(read_line)を要求する。実際の絞り込みは、入力が確定/
     -- キャンセルされた後にConfirmFindScreen経由で呼ばれるsearch/cancelが行う
     Invoker.commands.confirm_find = function(_args, state)
-        ctx.push_screen(ctx.ConfirmFindScreen.new())
+        ctx.push_screen(state, ctx.ConfirmFindScreen.new())
         terminal.request_line_input(0, state.display.height - 1, state.display.width, "/")
     end
 
@@ -194,11 +194,11 @@ function Commands.register(ctx)
     end
 
     -- 標準画面自体の切り替えなのでdefault_screenを操作する(push_screenは使わない)
-    Invoker.commands.toggle_layout = function(_args, _state)
-        if ctx.get_default_screen() == ctx.list_screen then
-            ctx.set_default_screen(ctx.grid_screen)
+    Invoker.commands.toggle_layout = function(_args, state)
+        if ctx.get_default_screen(state) == ctx.list_screen then
+            ctx.set_default_screen(state, ctx.grid_screen)
         else
-            ctx.set_default_screen(ctx.list_screen)
+            ctx.set_default_screen(state, ctx.list_screen)
         end
     end
 

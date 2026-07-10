@@ -13,8 +13,19 @@ local Commands = require("commands")
 --
 -- この変数自体はモジュールローカルだが、on_init/on_key以外の関数には
 -- クロージャで暗黙に渡さず、必ず引数stateとして明示的に渡すこと
+local list_screen = ListScreen.new()
+local grid_screen = GridScreen.new()
+
 local app_state = {
     display = { width = 0, height = 0 },
+    screen = {
+        -- 標準画面(一覧などの、割り込みが何もない時に表示する画面)
+        default = list_screen,
+        -- push_screenで置かれた「次に見せたい割り込み画面」。select_screenが消費するまで保持する
+        pushed = nil,
+        -- 今アクティブなスクリーンのインスタンス。select_screenでのみ更新する
+        current = list_screen,
+    },
     panes = {
         -- all_files: fs.list()の結果に".."を加えた生の一覧
         -- files: all_filesにshow_hidden・search_queryのフィルタを適用した、実際に表示・操作する一覧
@@ -33,43 +44,33 @@ local function current_pane(state)
     return state.panes[state.active_pane]
 end
 
-local list_screen = ListScreen.new()
-local grid_screen = GridScreen.new()
-
--- 標準画面(一覧などの、割り込みが何もない時に表示する画面)
-local default_screen = list_screen
--- push_screenで置かれた「次に見せたい割り込み画面」。select_screenが消費するまで保持する
-local pushed_screen = nil
--- 今アクティブなスクリーンのインスタンス。select_screenでのみ更新する
-local current_screen = default_screen
-
-local function get_current_screen()
-    return current_screen
+local function get_current_screen(state)
+    return state.screen.current
 end
 
-local function push_screen(screen_instance)
-    pushed_screen = screen_instance
+local function push_screen(state, screen_instance)
+    state.screen.pushed = screen_instance
 end
 
-local function get_default_screen()
-    return default_screen
+local function get_default_screen(state)
+    return state.screen.default
 end
 
 -- 標準画面自体を切り替える(一覧⇔2段組など、割り込みとは無関係な表示切り替えに使う)
-local function set_default_screen(screen_instance)
-    default_screen = screen_instance
+local function set_default_screen(state, screen_instance)
+    state.screen.default = screen_instance
 end
 
--- pushed_screenがあればそれをcurrent_screenとして採用し(1回で消費する)、
--- なければdefault_screenを採用する。コマンドを実行した直後にのみ呼ぶこと
--- （何もコマンドが実行されていないのに呼ぶと、割り込み画面がpushed_screen消費済みの
--- まま誤ってdefault_screenに戻ってしまう）
-local function select_screen()
-    if pushed_screen then
-        current_screen = pushed_screen
-        pushed_screen = nil
+-- state.screen.pushedがあればそれをcurrentとして採用し(1回で消費する)、
+-- なければdefaultを採用する。コマンドを実行した直後にのみ呼ぶこと
+-- （何もコマンドが実行されていないのに呼ぶと、割り込み画面がpushed消費済みの
+-- まま誤ってdefaultに戻ってしまう）
+local function select_screen(state)
+    if state.screen.pushed then
+        state.screen.current = state.screen.pushed
+        state.screen.pushed = nil
     else
-        current_screen = default_screen
+        state.screen.current = state.screen.default
     end
 end
 
@@ -209,7 +210,7 @@ local function draw(state, instruction)
     state.display.width = width
     state.display.height = height
     prepare_data(state, instruction)
-    get_current_screen():view(state)
+    get_current_screen(state):view(state)
 end
 
 function on_init()
@@ -218,14 +219,14 @@ function on_init()
 end
 
 function on_key(key)
-    local command_name, args = get_current_screen():command_mapper(key)
+    local command_name, args = get_current_screen(app_state):command_mapper(key)
     if command_name == "quit" then
         return false
     end
     local instruction = nil
     if command_name then
         instruction = Invoker.run(command_name, args, app_state)
-        select_screen()
+        select_screen(app_state)
     end
     draw(app_state, instruction)
     return true
